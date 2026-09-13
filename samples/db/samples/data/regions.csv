@@ -1,0 +1,250 @@
+﻿Country,2code,3code,Numeric,Region,Global
+Afghanistan,AF,AFG,4,Asia & Pacific,Global South
+Aland Islands,AX,ALA,248,Europe,Global North
+Albania,AL,ALB,8,Europe,Global North
+Algeria,DZ,DZA,12,Arab States,Global South
+American Samoa,AS,ASM,16,Asia & Pacific,Global South
+Andorra,AD,AND,20,Europe,Global North
+Angola,AO,AGO,24,Africa,Global South
+Anguilla,AI,AIA,660,South/Latin America,Global South
+Antarctica,AQ,ATA,10,Asia & Pacific,Global South
+Antigua and Barbuda,AG,ATG,28,South/Latin America,Global South
+Argentina,AR,ARG,32,South/Latin America,Global South
+Armenia,AM,ARM,51,Europe,Global South
+Aruba,AW,ABW,533,South/Latin America,Global South
+Australia,AU,AUS,36,Asia & Pacific,Global North
+Austria,AT,AUT,40,Europe,Global North
+Azerbaijan,AZ,AZE,31,Asia & Pacific,Global South
+Bahamas,BS,BHS,44,South/Latin America,Global South
+Bahrain,BH,BHR,48,Arab States,Global South
+Bangladesh,BD,BGD,50,Asia & Pacific,Global South
+Barbados,BB,BRB,52,South/Latin America,Global South
+Belarus,BY,BLR,112,Europe,Global South
+Belgium,BE,BEL,56,Europe,Global North
+Belize,BZ,BLZ,84,South/Latin America,Global South
+Benin,BJ,BEN,204,Africa,Global South
+Bermuda,BM,BMU,60,North America,Global North
+Bhutan,BT,BTN,64,Asia & Pacific,Global South
+Bolivia,BO,BOL,68,South/Latin America,Global South
+"Bonaire, Sint Eustatius and Saba",BQ,BES,535,Europe,Global North
+Bosnia and Herzegovina,BA,BIH,70,Europe,Global North
+Botswana,BW,BWA,72,Africa,Global South
+Bouvet Island,BV,BVT,74,South/Latin America,Global South
+Brazil,BR,BRA,76,South/Latin America,Global South
+British Indian Ocean Territory,IO,IOT,86,Asia & Pacific,Global South
+Brunei Darussalam,BN,BRN,96,Asia & Pacific,Global South
+Bulgaria,BG,BGR,100,Europe,Global North
+Burkina Faso,BF,BFA,854,Africa,Global South
+Burundi,BI,BDI,108,Africa,Global South
+Cabo Verde,CV,CPV,132,Africa,Global South
+Cambodia,KH,KHM,116,Asia & Pacific,Global South
+Cameroon,CM,CMR,120,Africa,Global South
+Canada,CA,CAN,124,North America,Global North
+Cayman Islands,KY,CYM,136,South/Latin America,Global South
+Central African Republic,CF,CAF,140,Africa,Global South
+Chad,TD,TCD,148,Africa,Global South
+Chile,CL,CHL,152,South/Latin America,Global South
+China,CN,CHN,156,Asia & Pacific,Global South
+Christmas Island,CX,CXR,162,Asia & Pacific,Global South
+Cocos (Keeling) Islands,CC,CCK,166,Asia & Pacific,Global South
+Colombia,CO,COL,170,South/Latin America,Global South
+Comoros,KM,COM,174,Arab States,Global South
+Congo,CD,COD,180,Africa,Global South
+"Congo, The Democratic Republic of the",CG,COG,178,Africa,Global South
+Cook Islands,CK,COK,184,Asia & Pacific,Global South
+Costa Rica,CR,CRI,188,South/Latin America,Global South
+Côte d'Ivoire,CI,CIV,384,Africa,Global South
+Croatia,HR,HRV,191,Europe,Global North
+Cuba,CU,CUB,192,South/Latin America,Global South
+Curaçao,CW,CUW,531,,Global South
+Cyprus,CY,CYP,196,Europe,Global North
+Czech Republic,CZ,CZE,203,Europe,Global North
+Denmark,DK,DNK,208,Europe,Global North
+Djibouti,DJ,DJI,262,Arab States,Global South
+Dominica,DM,DMA,212,South/Latin America,Global South
+Dominican Republic,DO,DOM,214,South/Latin America,Global South
+Ecuador,EC,ECU,218,South/Latin America,Global South
+Egypt,EG,EGY,818,Middle east,Global South
+El Salvador,SV,SLV,222,South/Latin America,Global South
+Equatorial Guinea,GQ,GNQ,226,Africa,Global South
+Eritrea,ER,ERI,232,Africa,Global South
+Estonia,EE,EST,233,Europe,Global North
+Eswatini,SZ,SWZ,748,Africa,Global South
+Ethiopia,ET,ETH,231,Africa,Global South
+Falkland Islands (Malvinas),FK,FLK,238,South/Latin America,Global South
+Faroe Islands,FO,FRO,234,Europe,Global North
+Fiji,FJ,FJI,242,Asia & Pacific,Global South
+Finland,FI,FIN,246,Europe,Global North
+France,FR,FRA,250,Europe,Global North
+French Guiana,GF,GUF,254,South/Latin America,Global South
+French Polynesia,PF,PYF,258,Asia & Pacific,Global South
+French Southern Territories,TF,ATF,260,Asia & Pacific,Global South
+Gabon,GA,GAB,266,Africa,Global South
+Gambia,GM,GMB,270,Africa,Global South
+Georgia,GE,GEO,268,Europe,Global South
+Germany,DE,DEU,276,Europe,Global North
+Ghana,GH,GHA,288,Africa,Global South
+Gibraltar,GI,GIB,292,Europe,Global North
+Greece,GR,GRC,300,Europe,Global North
+Greenland,GL,GRL,304,Europe,Global North
+Grenada,GD,GRD,308,South/Latin America,Global South
+Guadeloupe,GP,GLP,312,South/Latin America,Global South
+Guam,GU,GUM,316,Asia & Pacific,Global South
+Guatemala,GT,GTM,320,South/Latin America,Global South
+Guernsey,GG,GGY,831,Europe,Global North
+Guinea,GN,GIN,324,Africa,Global South
+Guinea-Bissau,GW,GNB,624,Africa,Global South
+Guyana,GY,GUY,328,South/Latin America,Global South
+Haiti,HT,HTI,332,South/Latin America,Global South
+Heard Island and McDonald Islands,HM,HMD,334,Asia & Pacific,Global South
+Holy See (Vatican City State),VA,VAT,336,Europe,Global North
+Honduras,HN,HND,340,South/Latin America,Global South
+Hong Kong,HK,HKG,344,Asia & Pacific,Global North
+Hungary,HU,HUN,348,Europe,Global North
+Iceland,IS,ISL,352,Europe,Global North
+India,IN,IND,356,Asia & Pacific,Global South
+Indonesia,ID,IDN,360,Asia & Pacific,Global South
+"Iran, Islamic Republic of",IR,IRN,364,Middle east,Global South
+Iraq,IQ,IRQ,368,Middle east,Global South
+Ireland,IE,IRL,372,Europe,Global North
+Isle of Man,IM,IMN,833,Europe,Global North
+Israel,IL,ISR,376,Europe,Global North
+Italy,IT,ITA,380,Europe,Global North
+Jamaica,JM,JAM,388,South/Latin America,Global South
+Japan,JP,JPN,392,Asia & Pacific,Global North
+Jersey,JE,JEY,832,Europe,Global North
+Jordan,JO,JOR,400,Middle east,Global South
+Kazakhstan,KZ,KAZ,398,Asia & Pacific,Global South
+Kenya,KE,KEN,404,Africa,Global South
+Kiribati,KI,KIR,296,Asia & Pacific,Global South
+"Korea, Democratic People's Republic of",KP,PRK,408,Asia & Pacific,Global South
+"Korea, Republic of",KR,KOR,410,Asia & Pacific,Global North
+Kuwait,KW,KWT,414,Middle east,Global South
+Kyrgyzstan,KG,KGZ,417,Asia & Pacific,Global South
+Lao People's Democratic Republic,LA,LAO,418,Asia & Pacific,Global South
+Latvia,LV,LVA,428,Europe,Global North
+Lebanon,LB,LBN,422,Middle east,Global South
+Lesotho,LS,LSO,426,Africa,Global South
+Liberia,LR,LBR,430,Africa,Global South
+Libya,LY,LBY,434,Middle east,Global South
+Liechtenstein,LI,LIE,438,Europe,Global North
+Lithuania,LT,LTU,440,Europe,Global North
+Luxembourg,LU,LUX,442,Europe,Global North
+Macao,MO,MAC,446,Asia & Pacific,Global North
+Madagascar,MG,MDG,450,Africa,Global South
+Malawi,MW,MWI,454,Africa,Global South
+Malaysia,MY,MYS,458,Asia & Pacific,Global South
+Maldives,MV,MDV,462,Asia & Pacific,Global South
+Mali,ML,MLI,466,Africa,Global South
+Malta,MT,MLT,470,Europe,Global North
+Marshall Islands,MH,MHL,584,Asia & Pacific,Global South
+Martinique,MQ,MTQ,474,South/Latin America,Global South
+Mauritania,MR,MRT,478,Arab States,Global South
+Mauritius,MU,MUS,480,Africa,Global South
+Mayotte,YT,MYT,175,Africa,Global South
+Mexico,MX,MEX,484,South/Latin America,Global South
+"Micronesia, Federated States of",FM,FSM,583,Asia & Pacific,Global South
+"Moldova, Republic of",MD,MDA,498,Europe,Global North
+Monaco,MC,MCO,492,Europe,Global North
+Mongolia,MN,MNG,496,Asia & Pacific,Global South
+Montenegro,ME,MNE,499,Europe,Global North
+Montserrat,MS,MSR,500,South/Latin America,Global South
+Morocco,MA,MAR,504,Arab States,Global South
+Mozambique,MZ,MOZ,508,Africa,Global South
+Myanmar,MM,MMR,104,Asia & Pacific,Global South
+Namibia,NA,NAM,516,Africa,Global South
+Nauru,NR,NRU,520,Asia & Pacific,Global South
+Nepal,NP,NPL,524,Asia & Pacific,Global South
+Netherlands,NL,NLD,528,Europe,Global North
+New Caledonia,NC,NCL,540,Asia & Pacific,Global South
+New Zealand,NZ,NZL,554,Asia & Pacific,Global North
+Nicaragua,NI,NIC,558,South/Latin America,Global South
+Niger,NE,NER,562,Africa,Global South
+Nigeria,NG,NGA,566,Africa,Global South
+Niue,NU,NIU,570,Asia & Pacific,Global South
+Norfolk Island,NF,NFK,574,Asia & Pacific,Global South
+Northern Mariana Islands,MP,MNP,580,Asia & Pacific,Global South
+Norway,NO,NOR,578,Europe,Global North
+Oman,OM,OMN,512,Middle east,Global South
+Pakistan,PK,PAK,586,Asia & Pacific,Global South
+Palau,PW,PLW,585,Asia & Pacific,Global South
+"Palestine, State of",PS,PSE,275,Arab States,Global South
+Panama,PA,PAN,591,South/Latin America,Global South
+Papua New Guinea,PG,PNG,598,Asia & Pacific,Global South
+Paraguay,PY,PRY,600,South/Latin America,Global South
+Peru,PE,PER,604,South/Latin America,Global South
+Philippines,PH,PHL,608,Asia & Pacific,Global South
+Pitcairn Islands,PN,PCN,612,Asia & Pacific,Global South
+Poland,PL,POL,616,Europe,Global North
+Portugal,PT,PRT,620,Europe,Global North
+Puerto Rico,PR,PRI,630,South/Latin America,Global South
+Qatar,QA,QAT,634,Middle east,Global South
+Republic of North Macedonia,MK,MKD,807,Europe,Global North
+Reunion,RE,REU,638,Asia & Pacific,Global South
+Romania,RO,ROU,642,Europe,Global North
+Russian Federation,RU,RUS,643,Europe,Global North
+Rwanda,RW,RWA,646,Africa,Global South
+Saint Barthelemy,BL,BLM,652,South/Latin America,Global South
+Saint Helena,SH,SHN,654,Africa,Global South
+Saint Kitts and Nevis,KN,KNA,659,South/Latin America,Global South
+Saint Lucia,LC,LCA,662,South/Latin America,Global South
+Saint Martin (French part),MF,MAF,663,South/Latin America,Global South
+Saint Pierre and Miquelon,PM,SPM,666,North America,Global North
+Saint Vincent and the Grenadines,VC,VCT,670,South/Latin America,Global South
+Samoa,WS,WSM,882,Asia & Pacific,Global South
+San Marino,SM,SMR,674,Europe,Global North
+Sao Tome and Principe,ST,STP,678,Africa,Global South
+Saudi Arabia,SA,SAU,682,Middle east,Global South
+Senegal,SN,SEN,686,Africa,Global South
+Serbia,RS,SRB,688,Europe,Global North
+Seychelles,SC,SYC,690,Africa,Global South
+Sierra Leone,SL,SLE,694,Africa,Global South
+Singapore,SG,SGP,702,Asia & Pacific,Global North
+Sint Maarten (Dutch part),SX,SXM,534,South/Latin America,Global South
+Slovakia,SK,SVK,703,Europe,Global North
+Slovenia,SI,SVN,705,Europe,Global North
+Solomon Islands,SB,SLB,90,Asia & Pacific,Global South
+Somalia,SO,SOM,706,Arab States,Global South
+South Africa,ZA,ZAF,710,Africa,Global South
+South Georgia and the South Sandwich Islands,GS,SGS,239,South/Latin America,Global South
+South Sudan,SS,SSD,728,Africa,Global South
+Spain,ES,ESP,724,Europe,Global North
+Sri Lanka,LK,LKA,144,Asia & Pacific,Global South
+Sudan,SD,SDN,729,Arab States,Global South
+Suriname,SR,SUR,740,South/Latin America,Global South
+Svalbard and Jan Mayen,SJ,SJM,744,Europe,Global North
+Sweden,SE,SWE,752,Europe,Global North
+Switzerland,CH,CHE,756,Europe,Global North
+Syrian Arab Republic,SY,SYR,760,Asia & Pacific,Global South
+Taiwan,TW,TWN,158,Asia & Pacific,Global North
+Tajikistan,TJ,TJK,762,Asia & Pacific,Global South
+"Tanzania, United Republic of",TZ,TZA,834,Africa,Global South
+Thailand,TH,THA,764,Asia & Pacific,Global South
+Timor-Leste,TL,TLS,626,Asia & Pacific,Global South
+Togo,TG,TGO,768,Africa,Global South
+Tokelau,TK,TKL,772,Asia & Pacific,Global South
+Tonga,TO,TON,776,Asia & Pacific,Global South
+Trinidad and Tobago,TT,TTO,780,South/Latin America,Global South
+Tunisia,TN,TUN,788,Arab States,Global South
+Turkey,TR,TUR,792,Europe,Global North
+Turkmenistan,TM,TKM,795,Asia & Pacific,Global South
+Turks and Caicos Islands,TC,TCA,796,South/Latin America,Global South
+Tuvalu,TV,TUV,798,Asia & Pacific,Global South
+Uganda,UG,UGA,800,Africa,Global South
+Ukraine,UA,UKR,804,Europe,Global South
+United Arab Emirates,AE,ARE,784,Middle east,Global South
+United Kingdom,GB,GBR,826,Europe,Global North
+United States,UM,UMI,581,North America,Global North
+United States Minor Outlying Islands,US,USA,840,Asia & Pacific,Global South
+Uruguay,UY,URY,858,South/Latin America,Global South
+Uzbekistan,UZ,UZB,860,Asia & Pacific,Global South
+Vanuatu,VU,VUT,548,Asia & Pacific,Global South
+Venezuela,VE,VEN,862,South/Latin America,Global South
+Vietnam,VN,VNM,704,Asia & Pacific,Global South
+"Virgin Islands, British",VG,VGB,92,South/Latin America,Global South
+"Virgin Islands, U.S.",VI,VIR,850,South/Latin America,Global South
+Wallis and Futuna,WF,WLF,876,Asia & Pacific,Global South
+Western Sahara,EH,ESH,732,Africa,Global South
+Yemen,YE,YEM,887,Middle east,Global South
+Zambia,ZM,ZMB,894,Africa,Global South
+Zimbabwe,ZW,ZWE,716,Africa,Global South

@@ -1,0 +1,36 @@
+# Docker Compose equivalent of build.bat + run.bat
+# Values come from .env (SAMPLE_SCHEMA, POSTGRES_*, DOCKER_IMAGE_TAG)
+#
+# Usage:
+#   docker compose up --build       # build image (bakes in schema + sample data) and start
+#   docker compose down             # stop and remove the container
+#   docker compose down -v          # also wipe the persisted data volume
+
+services:
+  postgres:
+    build:
+      context: .
+      args:
+        SCHEMA_FOLDER: ${SAMPLE_SCHEMA:-samples}
+        POSTGRES_USER: ${POSTGRES_USER:-postgres}
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+        POSTGRES_DB: ${POSTGRES_DB:-example}
+    image: ${DOCKER_IMAGE_TAG:-sample-db}
+    container_name: ${DOCKER_IMAGE_TAG:-sample-db}
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-example}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-example}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
