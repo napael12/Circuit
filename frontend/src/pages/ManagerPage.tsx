@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { api } from '../api/client'
-import type { ActionDef, AppUser, DataConnection, Role } from '../api/types'
+import type { AppUser, DataConnection, Role } from '../api/types'
 import { StatusBar } from '../components/layout/StatusBar'
 import { useBrandingStore } from '../store/branding'
 import { ApiKeysPanel } from '../components/manager/ApiKeysPanel'
@@ -30,18 +30,15 @@ export function ManagerPage() {
   const appName = useBrandingStore((s) => s.branding.name)
   const [tab, setTab] = useState<TabName>('dashboards')
   const [connections, setConnections] = useState<DataConnection[]>([])
-  const [actions, setActions] = useState<ActionDef[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [users, setUsers] = useState<AppUser[]>([])
 
   useEffect(() => {
     api.get<DataConnection[]>('/connections/').then(setConnections)
-    api.get<ActionDef[]>('/actions/').then(setActions)
     api.get<Role[]>('/roles/').then(setRoles)
     api.get<AppUser[]>('/users/').then(setUsers)
   }, [tab]) // refetch reference lists whenever a tab switch may have changed them
 
-  const actionOptions = useMemo(() => actions.map((a) => ({ value: a.id, label: a.id })), [actions])
   const roleOptions = useMemo(() => roles.map((r) => ({ value: String(r.id), label: r.name })), [roles])
   const roleNameById = useMemo(() => new Map(roles.map((r) => [r.id, r.name])), [roles])
 
@@ -63,9 +60,7 @@ export function ManagerPage() {
       <div className="min-h-0 flex-1 overflow-auto p-[18px]">
         {tab === 'dashboards' && <DashboardsPanel />}
         {tab === 'connections' && <ConnectionsPanel roles={roles} />}
-        {tab === 'datastores' && (
-          <DatastoresPanel connections={connections} actions={actions} actionOptions={actionOptions} roles={roles} />
-        )}
+        {tab === 'datastores' && <DatastoresPanel connections={connections} roles={roles} />}
         {tab === 'api-keys' && <ApiKeysPanel users={users} />}
         {tab === 'settings' && (
           <CrudTable

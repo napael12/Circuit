@@ -18,14 +18,14 @@ import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
 import { SelectorColumnFilter, TextColumnFilter } from '../reui/data-grid/data-grid-header-filters'
 import { DataGridTable } from '../reui/data-grid/data-grid-table'
 import { api } from '../../api/client'
-import type { ActionDef, DataConnection, Datastore, Role } from '../../api/types'
+import type { DataConnection, Datastore, Role } from '../../api/types'
 import { downloadJson, readSingleItemJson } from '../../utils/importExport'
 import { CloneDialog } from './CloneDialog'
 import { DatastoreDialog } from './DatastoreDialog'
 
 const PRIMARY_CELL_CLASS = 'text-blue-600 dark:text-blue-500 font-medium'
 
-const SOURCE_TYPE_LABELS: Record<string, string> = { query: 'SQL', action: 'REST', s3: 'S3', json: 'JSON' }
+const SOURCE_TYPE_LABELS: Record<string, string> = { query: 'SQL', serialized: 'Serialized' }
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0')
@@ -46,9 +46,6 @@ interface EditingState {
 interface Props {
   /** Full connection list, so the dialog can offer type-matching connections per source_type. */
   connections: DataConnection[]
-  /** Full action list, for REST source_type's Action picker and ${param} discovery. */
-  actions: ActionDef[]
-  actionOptions: { value: string; label: string }[]
   roles: Role[]
 }
 
@@ -59,7 +56,7 @@ interface Props {
  * fields, tabbed edit+preview, a data-grid of derived default params; see
  * DatastoreDialog).
  */
-export function DatastoresPanel({ connections, actions, actionOptions, roles }: Props) {
+export function DatastoresPanel({ connections, roles }: Props) {
   const [rows, setRows] = useState<Datastore[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<EditingState | null>(null)
@@ -107,7 +104,7 @@ export function DatastoresPanel({ connections, actions, actionOptions, roles }: 
         id: 'id',
         accessorKey: 'id',
         header: ({ column }) => (
-          <DataGridColumnHeader column={column} title="Id" filter={<TextColumnFilter column={column} placeholder="Filter id" />} />
+          <DataGridColumnHeader column={column} title="Name" filter={<TextColumnFilter column={column} placeholder="Filter name" />} />
         ),
         cell: ({ getValue }) => <span className={PRIMARY_CELL_CLASS}>{String(getValue())}</span>,
         enableColumnFilter: true,
@@ -254,8 +251,6 @@ export function DatastoresPanel({ connections, actions, actionOptions, roles }: 
           initial={editing.datastore}
           initialTab={editing.tab}
           connections={connections}
-          actions={actions}
-          actionOptions={actionOptions}
           roles={roles}
           onClose={() => setEditing(null)}
           onSaved={() => {
@@ -268,7 +263,7 @@ export function DatastoresPanel({ connections, actions, actionOptions, roles }: 
         <CloneDialog
           title="Clone datastore"
           label="Name"
-          suggestedName={`${cloneTarget.name || cloneTarget.id}-copy`}
+          suggestedName={`${cloneTarget.id}-copy`}
           onClone={async (name) => {
             await api.post(`/datastores/${cloneTarget.id}/duplicate/`, { name })
             toast.success('Cloned.')

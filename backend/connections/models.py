@@ -9,16 +9,8 @@ class DataConnection(models.Model):
     Each ``type`` is resolved by a connections.backends.ConnectionBackend
     implementation (see that module for the extendable-interface pattern
     specs/connection.md asks for): ``sql`` builds a SQLAlchemy engine used by
-    datastore.engine, ``s3`` builds a boto3 client.
-
-    specs/datastore-streamline.md removed REST endpoint and File system as
-    connection types -- ``TYPE_REST`` stays defined (not in ``TYPE_CHOICES``,
-    so no new/edited connection can be that type) purely because
-    catalog.models.Action.connection's own ``limit_choices_to`` still
-    references it; RestConnectionBackend stays registered in
-    connections.backends for the same reason (an Action's own connection
-    field, which always yields an empty picker now that no such connection
-    can exist, still falls through to that backend if one somehow does).
+    datastore.engine, ``s3`` builds a boto3 client, ``http`` supplies
+    authorization for datastore.services' source_type=serialized fetches.
 
     Fields shared by every type live as top-level columns; type-specific
     settings that don't fit those columns (S3 keys/region, an optional SQL
@@ -27,11 +19,12 @@ class DataConnection(models.Model):
     """
 
     TYPE_SQL = 'sql'
-    TYPE_REST = 'rest'
     TYPE_S3 = 's3'
+    TYPE_HTTP = 'http'
     TYPE_CHOICES = [
         (TYPE_SQL, 'SQL database'),
         (TYPE_S3, 'S3 bucket'),
+        (TYPE_HTTP, 'HTTP'),
     ]
 
     id = models.SlugField(primary_key=True, max_length=30)
@@ -48,10 +41,14 @@ class DataConnection(models.Model):
     options = models.JSONField(default=dict, blank=True)
 
     # type=sql: only used if set, as a full override SQLAlchemy URL instead of
-    # the discrete host/port/database fields above. type=s3: unused (see config).
+    # the discrete host/port/database fields above. type=s3: unused. type=http
+    # (specs/http-connection.md): optional "Authorization URL" -- required for
+    # auth_type=digest (the challenge/response handshake needs a real
+    # endpoint), used only by Test for the other auth types.
     url = models.CharField(max_length=500, blank=True)
 
-    # type=sql: db credentials. Unused for type=s3.
+    # type=sql: db credentials. type=http: Basic/Digest auth username+password.
+    # Unused for type=s3.
     username = models.CharField(max_length=120, blank=True)
     password = EncryptedTextField(blank=True)
 
@@ -63,6 +60,12 @@ class DataConnection(models.Model):
     # type=s3: {"access_key": "...", "secret_key": "...", "region": "...",
     #   "bucket": "..." (optional, used by Test)}. Leave access_key/secret_key
     #   blank for anonymous access to a public bucket.
+    # type=http: {"auth_type": "none"|"basic"|"api_key"|"bearer"|"digest",
+    #   "api_key_name": "...", "api_key_value": "...",
+    #   "api_key_location": "header"|"query", "token": "...",
+    #   "digest_algorithm": "MD5"|"SHA-256" (informational -- requests
+    #   negotiates the actual algorithm from the server's own challenge),
+    #   "headers": {"X-Custom": "..."}}.
     config = EncryptedJSONField(default=dict, blank=True)
 
     # Common to every type (specs/connection.md): a cap on rows/records

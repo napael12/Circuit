@@ -1,6 +1,6 @@
 from django.db import models
 
-from catalog.models import Action, SqlDef
+from catalog.models import SqlDef
 from connections.models import DataConnection
 
 
@@ -12,17 +12,20 @@ class Datastore(models.Model):
     longer build/send their own SQL or fetch URLs (the legacy "pass
     through" model). Instead they hold a Datastore id and call
     /api/datastores/{id}/data/, and the server decides how/when the
-    underlying query, action, or S3 object actually runs.
+    underlying query or serialized fetch actually runs.
 
-    Each source_type is built on a matching connections.models.DataConnection
-    type (SQL/S3 -- see connections.backends for that side of the interface):
-    source_type=query uses a type=sql connection, source_type=action uses a
-    type=rest connection (via catalog.models.Action -- see that model's own
-    docstring; specs/datastore-streamline.md removed REST as a *creatable*
-    connection type, but left this Action-only path alone), source_type=s3
-    uses a type=s3 connection directly. specs/datastore-streamline.md also
-    removed source_type=file (a File system connection) entirely -- it had
-    no remaining path to a valid connection once File was removed.
+    source_type=query uses a type=sql connections.models.DataConnection (see
+    connections.backends for that side of the interface).
+
+    source_type=serialized (specs/serialized-datastore.md) is a general-
+    purpose fetch+parse pipeline that superseded the earlier, narrower
+    source_type=action/s3/json/file types (each handled exactly one
+    connection+format combination; serialized replaced all of them and they
+    were removed): it can fetch raw content over HTTP (optionally through a
+    type=http connection, see connections.backends' HttpConnectionBackend),
+    from an S3 bucket (a type=s3 connection), or a server-local file, then
+    parse it with the shared Renderer interface (renderer_type/
+    renderer_config).
 
     ``refresh_mode=on_demand`` executes synchronously on every request.
     ``refresh_mode=scheduled`` is executed by datastore.scheduler on a
@@ -32,14 +35,29 @@ class Datastore(models.Model):
     """
 
     SOURCE_QUERY = 'query'
-    SOURCE_ACTION = 'action'
-    SOURCE_S3 = 's3'
-    SOURCE_JSON = 'json'
+    SOURCE_SERIALIZED = 'serialized'
     SOURCE_CHOICES = [
         (SOURCE_QUERY, 'SQL query'),
-        (SOURCE_ACTION, 'Action (REST)'),
-        (SOURCE_S3, 'S3 object'),
-        (SOURCE_JSON, 'JSON'),
+        (SOURCE_SERIALIZED, 'Serialized Data'),
+    ]
+
+    # source_type=serialized only (specs/serialized-datastore.md): where the
+    # raw content comes from, independent of how it's then parsed
+    # (renderer_type/renderer_config, below).
+    ACCESS_HTTP = 'http'
+    ACCESS_S3 = 's3'
+    ACCESS_FILE = 'file'
+    ACCESS_CHOICES = [
+        (ACCESS_HTTP, 'HTTP request'),
+        (ACCESS_S3, 'S3 bucket'),
+        (ACCESS_FILE, 'File'),
+    ]
+
+    METHOD_GET = 'GET'
+    METHOD_POST = 'POST'
+    METHOD_CHOICES = [
+        (METHOD_GET, 'GET'),
+        (METHOD_POST, 'POST'),
     ]
 
     RENDERER_NONE = 'none'
@@ -64,8 +82,9 @@ class Datastore(models.Model):
 
     # specs/api_datastore.md: whether/how this datastore is reachable through
     # the public, API-key-authenticated pull/push surface (breadboard.
-    # public_api). PUSH is only meaningful for source_type=JSON -- enforced
-    # in DatastoreSerializer.validate(), not just here.
+    # public_api). PUSH is only meaningful for source_type=SERIALIZED using
+    # the JSON renderer -- enforced in DatastoreSerializer.validate(), not
+    # just here.
     API_MODE_NONE = 'none'
     API_MODE_PULL = 'pull'
     API_MODE_PUSH = 'push'
@@ -75,13 +94,17 @@ class Datastore(models.Model):
         (API_MODE_PUSH, 'Push'),
     ]
 
+    # No separate display-name field -- id doubles as the display name in
+    # the manager table, same convention as connections.models.DataConnection.
     id = models.SlugField(primary_key=True, max_length=30)
-    name = models.CharField(max_length=255, blank=True)
     source_type = models.CharField(max_length=10, choices=SOURCE_CHOICES)
+    # source_type=serialized only: where its raw content is fetched from.
+    access_type = models.CharField(max_length=6, choices=ACCESS_CHOICES, blank=True)
 
-    # source_type=query: a type=sql connection. source_type=s3: a type=s3
-    # connection used directly. source_type=action: unused (the connection
-    # lives on the Action itself).
+    # source_type=query: a type=sql connection. source_type=serialized: a
+    # type=http connection (access_type=http, optional -- unset means no
+    # authorization) or a type=s3 connection (access_type=s3, required);
+    # unused for access_type=file.
     connection = models.ForeignKey(
         DataConnection, null=True, blank=True, on_delete=models.CASCADE,
     )
@@ -89,42 +112,63 @@ class Datastore(models.Model):
     inline_sql = models.TextField(blank=True, help_text='Used when sql_def is not set')
     row_limit = models.PositiveIntegerField(null=True, blank=True)
 
-    # source_type=action
-    action = models.ForeignKey(Action, null=True, blank=True, on_delete=models.CASCADE)
-
-    # source_type=s3: the object key/path within the connection's bucket.
-    # Supports ${param} substitution.
+    # source_type=serialized + access_type=s3: the object key/path within
+    # the connection's bucket, used when object_url is blank -- also
+    # accepts a full s3:// URI or https S3 URL here (services._parse_s3_url),
+    # in which case its own bucket overrides the connection's configured
+    # one. Supports ${param} substitution.
     object_key = models.CharField(max_length=500, blank=True)
+    # source_type=serialized + access_type=s3 only: an s3:// URI or an s3/
+    # virtual-hosted-style https URL (what the AWS console's own "Copy S3
+    # URI"/"Object URL" buttons produce), tried instead of connection+
+    # object_key when set. Fetched through the connection's own credentials
+    # when one is set (services._parse_s3_url extracts bucket+key from the
+    # URL itself); falls back to a plain unauthenticated GET when no
+    # connection is set or the URL isn't a recognized S3 shape (a public
+    # bucket's URL). Supports ${param} substitution.
+    object_url = models.CharField(max_length=500, blank=True)
 
-    # source_type=json (specs/json_datastore.md): the JSON body text, used
-    # when connection is unset. Covers both the "hard-coded" and "passed as
-    # a parameter" body sources -- the latter is just this field set to a
-    # bare ${param}. Supports ${param} substitution.
+    # source_type=serialized: the collapsible "Body" override
+    # (specs/serialized-datastore.md) used for test/troubleshooting -- when
+    # non-blank, its content is parsed directly instead of actually
+    # fetching from access_type's configured source. Supports ${param}.
     body = models.TextField(blank=True)
-    # source_type=json + connection set (a type=rest connection): the
-    # endpoint to GET the JSON body from, appended to the connection's base
-    # url the same way Action.path is (see catalog.actions.run_action).
-    # Supports ${param} substitution.
+    # source_type=serialized + access_type=http: the request URL, used as-is
+    # (not appended to the connection's own url -- the http connection here
+    # only supplies authorization, not a base path). Supports ${param}.
     data_url = models.CharField(max_length=500, blank=True)
-    # source_type=json: JsonPath expression (datastore.renderers.render_json)
-    # selecting the row node(s) out of the parsed body/response -- blank
-    # resolves to "$" (the whole document). Supports ${param} substitution.
-    json_root_path = models.CharField(max_length=500, blank=True)
+
+    # source_type=serialized + access_type=http only.
+    request_method = models.CharField(max_length=6, choices=METHOD_CHOICES, default=METHOD_GET, blank=True)
+    # key -> value query/form params merged into the HTTP request. Supports
+    # ${param} substitution in each value.
+    request_params = models.JSONField(default=dict, blank=True)
+    # Raw request body (JSON/text/XML text), used instead of/alongside
+    # request_params for POST. Supports ${param} substitution.
+    request_body = models.TextField(blank=True)
+
+    # source_type=serialized + access_type=file only: a directory on the
+    # server's own filesystem, and a filename and/or regex selecting one
+    # file within it (the first match, alphabetically, when more than one
+    # file matches). Both support ${param} substitution.
+    file_path = models.CharField(max_length=500, blank=True)
+    file_expression = models.CharField(max_length=255, blank=True)
 
     # Renderer interface (specs/datasource_enhancements.md): how raw content
-    # from source_type=action/s3 is turned into rows/columns -- see
+    # from source_type=serialized is turned into rows/columns -- see
     # datastore.renderers. Unused for source_type=query (SQL already
-    # produces rows/columns natively).
+    # produces rows/columns natively). source_type=serialized only offers
+    # json/xml/delimited (specs/serialized-datastore.md's own "Processing
+    # Data" list) -- enforced in the UI, not here.
     renderer_type = models.CharField(max_length=15, choices=RENDERER_CHOICES, default=RENDERER_NONE, blank=True)
     renderer_config = models.JSONField(default=dict, blank=True)
 
     # name -> default value, for any ${param} referenced across this
-    # datastore's own metadata (SQL text, object_key, data_url,
-    # renderer_config, or its action's url/path/body/headers).
+    # datastore's own metadata (SQL text, object_key, data_url, renderer_config, etc).
     default_params = models.JSONField(default=dict, blank=True)
 
     # specs/api_datastore.md: PUSH ignores refresh_mode entirely (data
-    # arrives via the push API call, not a source re-run) -- json_root_path
+    # arrives via the push API call, not a source re-run) -- renderer_config
     # and row_limit still apply to the pushed payload.
     api_mode = models.CharField(max_length=10, choices=API_MODE_CHOICES, default=API_MODE_NONE, blank=True)
 
@@ -184,10 +228,11 @@ class Datastore(models.Model):
                 for v in value:
                     yield from strings_in(v)
 
-        texts = [self.sql_text(), self.object_key, self.body, self.data_url, self.json_root_path]
-        if self.action_id:
-            texts += [self.action.url, self.action.path, self.action.request_body]
-            texts += list(strings_in(self.action.headers))
+        texts = [
+            self.sql_text(), self.object_key, self.object_url, self.body, self.data_url,
+            self.request_body, self.file_path, self.file_expression,
+        ]
+        texts += list(strings_in(self.request_params))
         texts += list(strings_in(self.renderer_config))
 
         names: list[str] = []

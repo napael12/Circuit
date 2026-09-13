@@ -21,7 +21,6 @@ import { Textarea } from '@/components/ui/textarea'
 
 import { api } from '../api/client'
 import type {
-  ActionDef,
   DataConnection,
   Datastore,
   DatastorePreviewResult,
@@ -147,7 +146,6 @@ export function EditorPage() {
   const [mode, setMode] = useState<'design' | 'preview'>('design')
   const [globalDatastoreIds, setGlobalDatastoreIds] = useState<string[]>([])
   const [connections, setConnections] = useState<DataConnection[]>([])
-  const [actions, setActions] = useState<ActionDef[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [allowedRoles, setAllowedRoles] = useState<number[]>([])
   const [saveAsOpen, setSaveAsOpen] = useState(false)
@@ -164,11 +162,9 @@ export function EditorPage() {
   useEffect(() => {
     api.get<Datastore[]>('/datastores/').then((list) => setGlobalDatastoreIds(list.map((d) => d.id)))
     api.get<DataConnection[]>('/connections/').then(setConnections)
-    api.get<ActionDef[]>('/actions/').then(setActions)
     api.get<Role[]>('/roles/').then(setRoles)
   }, [])
 
-  const actionOptions = useMemo(() => actions.map((a) => ({ value: a.id, label: a.id })), [actions])
   const datastoreOptions = useMemo(() => content.datastores.map((d) => d.name), [content.datastores])
   const drilldownOptions = useMemo(
     () => (content.drilldowns ?? []).map((d: PanelDrilldown) => ({ id: d.id, name: d.name })),
@@ -896,8 +892,6 @@ export function EditorPage() {
           initial={datastoreDialog.initial}
           globalDatastoreIds={globalDatastoreIds}
           connections={connections}
-          actions={actions}
-          actionOptions={actionOptions}
           onClose={() => setDatastoreDialog(null)}
           onSave={saveDatastoreRef}
         />

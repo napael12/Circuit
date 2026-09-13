@@ -16,9 +16,10 @@ class DatastoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = Datastore
         fields = [
-            'id', 'name', 'source_type', 'connection', 'sql_def', 'inline_sql',
-            'row_limit', 'action', 'object_key', 'body',
-            'data_url', 'json_root_path', 'renderer_type',
+            'id', 'source_type', 'access_type', 'connection', 'sql_def', 'inline_sql',
+            'row_limit', 'object_key', 'object_url', 'body',
+            'data_url', 'request_method', 'request_params', 'request_body',
+            'file_path', 'file_expression', 'renderer_type',
             'renderer_config', 'default_params', 'api_mode', 'refresh_mode', 'cron_schedule',
             'idle_timeout_seconds', 'is_active',
             'last_run_at', 'last_error', 'created_at', 'updated_at', 'allowed_roles',
@@ -33,8 +34,16 @@ class DatastoreSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         source_type = attrs.get('source_type', getattr(self.instance, 'source_type', None))
         api_mode = attrs.get('api_mode', getattr(self.instance, 'api_mode', Datastore.API_MODE_NONE))
-        if api_mode == Datastore.API_MODE_PUSH and source_type != Datastore.SOURCE_JSON:
-            raise serializers.ValidationError({'api_mode': 'Push mode is only available for JSON datastores.'})
+        renderer_type = attrs.get('renderer_type', getattr(self.instance, 'renderer_type', Datastore.RENDERER_NONE))
+        # Push posts a raw JSON body (breadboard.public_api.PushDatastoreView)
+        # straight through the JSON renderer -- only meaningful while this
+        # datastore's own renderer is JSON, since an XML/Delimited-configured
+        # store has no way to make sense of a pushed JSON payload.
+        push_eligible = source_type == Datastore.SOURCE_SERIALIZED and renderer_type == Datastore.RENDERER_JSON
+        if api_mode == Datastore.API_MODE_PUSH and not push_eligible:
+            raise serializers.ValidationError({
+                'api_mode': 'Push mode is only available for Serialized Data datastores using the JSON renderer.',
+            })
         return attrs
 
     def create(self, validated_data):

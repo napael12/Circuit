@@ -103,14 +103,14 @@ function useLocalDatastore(
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Action-backed local entries only store the target action's id, not its
-  // url/path/body text, so which params it references can't be discovered
-  // client-side -- fall back to "every current param" for those (same as
-  // before this narrowing existed), same as the pre-load-name state below.
-  const relevantParamNames =
-    entry && entry.source_type !== 'action'
-      ? discoverAllParams(entry.inline_sql, entry.object_key, entry.body, entry.data_url, entry.json_root_path)
-      : null
+  const relevantParamNames = entry
+    ? discoverAllParams(
+        entry.inline_sql, entry.object_key, entry.object_url, entry.body, entry.data_url,
+        entry.request_body, entry.file_path, entry.file_expression,
+        entry.request_params ? JSON.stringify(entry.request_params) : undefined,
+        entry.renderer_config ? JSON.stringify(entry.renderer_config) : undefined,
+      )
+    : null
   const relevantParams = relevantParamNames ? pickParams(params, relevantParamNames) : params
   const paramsKey = JSON.stringify(relevantParams)
 

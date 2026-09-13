@@ -84,17 +84,24 @@ def render_xml(raw, config: dict) -> list[dict]:
 
 
 def render_delimited(raw, config: dict) -> list[dict]:
-    """config = {"delimiter": ",", "has_header": true, "columns"?: [name, ...]}.
+    """config = {"delimiter": ",", "has_header": true, "quote_char"?: '"', "columns"?: [name, ...]}.
 
     ``columns`` supplies explicit column names -- required when
     has_header=false, optional (renames the header row) when true.
+    ``quote_char`` (the "text qualifier") defaults to '"'; pass '' to disable
+    quoting entirely (csv.QUOTE_NONE).
     """
     text = _as_text(raw)
     delimiter = config.get('delimiter') or ','
     has_header = config.get('has_header', True)
     explicit_columns = config.get('columns')
+    quote_char = config.get('quote_char', '"')
 
-    data_rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
+    if quote_char:
+        reader_kwargs = {'quotechar': quote_char}
+    else:
+        reader_kwargs = {'quoting': csv.QUOTE_NONE}
+    data_rows = list(csv.reader(io.StringIO(text), delimiter=delimiter, **reader_kwargs))
     if not data_rows:
         return []
     if has_header:

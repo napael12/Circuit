@@ -20,11 +20,10 @@ from rest_framework.views import APIView
 from apikeys.authentication import ApiKeyAuthentication
 from apikeys.models import ApiKeyUsage
 from breadboard.access import can_access
-from breadboard.templating import substitute_template_vars
 from datastore import activity
 from datastore.models import Datastore
 from datastore.renderers import render as render_content
-from datastore.services import run_datastore
+from datastore.services import run_datastore, substitute_config
 
 
 def _log(request, ds_id: str, mode: str, ok: bool, detail: str = '') -> None:
@@ -46,6 +45,40 @@ def _get_datastore(pk: str) -> Datastore:
         return Datastore.objects.get(pk=pk)
     except Datastore.DoesNotExist:
         raise Http404
+
+
+def _request_value(request, key: str):
+    """A single named value, from a query-string param first, else the
+    (JSON or form) body -- used for the "format"/"filename" pull options so
+    either calling convention works."""
+    value = request.query_params.get(key)
+    if value is not None:
+        return value
+    data = request.data
+    return data.get(key) if isinstance(data, dict) else None
+
+
+def _merged_params(request) -> dict:
+    """Datastore ${param}/:param values (specs/api_datastore.md), collected
+    from -- in increasing precedence -- the query string
+    (?param1=value1&param2=value2), flat top-level body keys (a plain
+    x-www-form-urlencoded POST, or a JSON body with no "params" wrapper),
+    and a nested {"params": {...}} object (the original documented shape).
+    Lets a pull be triggered as simply as a GET with a query string, a POST
+    with form fields, or the original structured JSON body -- any mix of
+    the three is merged rather than one replacing the others.
+    """
+    merged: dict = {key: request.query_params.get(key) for key in request.query_params}
+    data = request.data
+    if isinstance(data, dict):
+        reserved = {'params', 'format', 'filename'}
+        for key, value in data.items():
+            if key not in reserved:
+                merged[key] = value
+        nested = data.get('params')
+        if isinstance(nested, dict):
+            merged.update(nested)
+    return merged
 
 
 def _rows_to_csv(rows: list[dict]) -> str:
@@ -74,17 +107,27 @@ def _rows_to_xlsx(rows: list[dict]) -> bytes:
 
 
 class PullDatastoreView(APIView):
-    """POST /api/v1/datastores/<id>/pull/ -- specs/api_datastore.md I.
+    """GET or POST /api/v1/datastores/<id>/pull/ -- specs/api_datastore.md I.
 
-    Body (all optional): {"params": {...}, "format": "json"|"csv"|"xlsx", "filename": "..."}.
-    Returns JSON by default; csv/xlsx require the result to be tabular
-    (a list of row objects) and stream back as a downloadable attachment.
+    Datastore params can be passed as a query string (?param1=value1&
+    param2=value2 -- works with either method), as flat POST body fields,
+    or in a POST body's {"params": {...}} object -- see _merged_params.
+    "format" ("json"|"csv"|"xlsx") and "filename" accept the same either
+    query-string-or-body convention (see _request_value). Returns JSON by
+    default; csv/xlsx require the result to be tabular (a list of row
+    objects) and stream back as a downloadable attachment.
     """
 
     authentication_classes = [ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
 
+    def get(self, request, pk):
+        return self._pull(request, pk)
+
     def post(self, request, pk):
+        return self._pull(request, pk)
+
+    def _pull(self, request, pk):
         ds = _get_datastore(pk)
         if not can_access(request.user, ds):
             _log(request, pk, ApiKeyUsage.MODE_PULL, False, 'access denied')
@@ -93,9 +136,9 @@ class PullDatastoreView(APIView):
             _log(request, pk, ApiKeyUsage.MODE_PULL, False, 'pull not enabled')
             return Response({'detail': 'This datastore is not enabled for API pull.'}, status=403)
 
-        fmt = (request.data.get('format') or 'json').lower()
+        fmt = (_request_value(request, 'format') or 'json').lower()
         try:
-            result = run_datastore(ds, request.data.get('params'))
+            result = run_datastore(ds, _merged_params(request))
         except Exception as exc:  # noqa: BLE001 - surface any driver/query/HTTP error to the caller
             _log(request, pk, ApiKeyUsage.MODE_PULL, False, str(exc)[:255])
             return Response({'detail': str(exc)}, status=400)
@@ -112,7 +155,7 @@ class PullDatastoreView(APIView):
             _log(request, pk, ApiKeyUsage.MODE_PULL, False, f'{fmt} requested for non-tabular data')
             return Response({'detail': f'"{fmt}" export requires tabular (row/column) data.'}, status=400)
 
-        filename = (request.data.get('filename') or ds.id).strip() or ds.id
+        filename = (_request_value(request, 'filename') or ds.id).strip() or ds.id
         _log(request, pk, ApiKeyUsage.MODE_PULL, True)
         if fmt == 'csv':
             response = HttpResponse(_rows_to_csv(result), content_type='text/csv')
@@ -129,12 +172,21 @@ class PullDatastoreView(APIView):
 class PushDatastoreView(APIView):
     """POST /api/v1/datastores/<id>/push/ -- specs/api_datastore.md II.
 
-    Body: the JSON payload to push (a bare object or array -- whatever
-    json_root_path expects), run through the same JSON-datastore rendering
-    pipeline a pull would use, then cached and broadcast to every panel/
-    control currently subscribed to this datastore's websocket group --
-    refresh_mode is ignored entirely; json_root_path and row_limit still
-    apply. If nothing is currently listening, the payload is not processed.
+    Body: the JSON payload to push (a bare object or array -- whatever the
+    configured root path expects), run through the JSON renderer, then
+    cached and broadcast to every panel/control currently subscribed to
+    this datastore's websocket group -- refresh_mode is ignored entirely;
+    row_limit still applies. If nothing is currently listening, the payload
+    is not processed.
+
+    Only reachable when renderer_type is JSON (DatastoreSerializer.validate
+    enforces this at save time), so an XML/Delimited-configured datastore
+    can never have api_mode=push in the first place.
+
+    The renderer_config is resolved against default_params, overridden by
+    any query-string params on the call itself (?param1=value1&param2=
+    value2) -- the request body is the payload, so unlike Pull there's no
+    room for params inside it.
     """
 
     authentication_classes = [ApiKeyAuthentication]
@@ -145,7 +197,7 @@ class PushDatastoreView(APIView):
         if not can_access(request.user, ds):
             _log(request, pk, ApiKeyUsage.MODE_PUSH, False, 'access denied')
             return Response({'detail': "You don't have access to this datastore."}, status=403)
-        if ds.api_mode != Datastore.API_MODE_PUSH or ds.source_type != Datastore.SOURCE_JSON:
+        if ds.api_mode != Datastore.API_MODE_PUSH or ds.source_type != Datastore.SOURCE_SERIALIZED:
             _log(request, pk, ApiKeyUsage.MODE_PUSH, False, 'push not enabled')
             return Response({'detail': 'This datastore is not enabled for API push.'}, status=403)
 
@@ -153,9 +205,10 @@ class PushDatastoreView(APIView):
             _log(request, pk, ApiKeyUsage.MODE_PUSH, True, 'no active controls, skipped')
             return Response({'detail': 'No active controls -- push skipped.'}, status=202)
 
-        root_path = substitute_template_vars(ds.json_root_path, ds.default_params) or '$'
+        params = {**ds.default_params, **{key: request.query_params.get(key) for key in request.query_params}}
+        config = substitute_config(ds.renderer_config, params)
         try:
-            result = render_content('json', request.data, {'root_path': root_path})
+            result = render_content('json', request.data, config)
         except Exception as exc:  # noqa: BLE001 - surface a bad root_path/payload shape to the caller
             _log(request, pk, ApiKeyUsage.MODE_PUSH, False, str(exc)[:255])
             return Response({'detail': str(exc)}, status=400)

@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from accounts.views import RoleViewSet, UserViewSet
 from apikeys.views import ApiKeyViewSet
-from catalog.views import ActionViewSet, SqlDefViewSet
+from catalog.views import SqlDefViewSet
 from connections.views import DataConnectionViewSet
 from datastore.views import DatastoreViewSet
 from panels.views import PanelViewSet
@@ -14,7 +14,6 @@ from .public_api import PullDatastoreView, PushDatastoreView
 router = DefaultRouter()
 router.register('connections', DataConnectionViewSet)
 router.register('sqldefs', SqlDefViewSet)
-router.register('actions', ActionViewSet)
 router.register('panels', PanelViewSet)
 router.register('datastores', DatastoreViewSet)
 router.register('settings', SettingViewSet)

@@ -45,7 +45,7 @@ class DatastoreViewSet(ModelViewSet):
     def data(self, request, pk=None):
         """Fetch data for a panel control.
 
-        For refresh_mode=on_demand this runs the query/action synchronously
+        For refresh_mode=on_demand this runs the query/fetch synchronously
         with the caller's params. For refresh_mode=scheduled it just returns
         the cached last_result -- the client should also open a
         /ws/datastore/{id}/ websocket to receive live pushes when the
@@ -77,15 +77,20 @@ class DatastoreViewSet(ModelViewSet):
         data = request.data
         ds = Datastore(
             source_type=data.get('source_type') or Datastore.SOURCE_QUERY,
+            access_type=data.get('access_type') or '',
             connection_id=data.get('connection') or None,
             sql_def_id=data.get('sql_def') or None,
             inline_sql=data.get('inline_sql') or '',
             row_limit=data.get('row_limit') or None,
-            action_id=data.get('action') or None,
             object_key=data.get('object_key') or '',
+            object_url=data.get('object_url') or '',
             body=data.get('body') or '',
             data_url=data.get('data_url') or '',
-            json_root_path=data.get('json_root_path') or '',
+            request_method=data.get('request_method') or Datastore.METHOD_GET,
+            request_params=data.get('request_params') or {},
+            request_body=data.get('request_body') or '',
+            file_path=data.get('file_path') or '',
+            file_expression=data.get('file_expression') or '',
             renderer_type=data.get('renderer_type') or Datastore.RENDERER_NONE,
             renderer_config=data.get('renderer_config') or {},
             default_params=data.get('default_params') or {},
@@ -95,24 +100,30 @@ class DatastoreViewSet(ModelViewSet):
     @action(detail=True, methods=['post'])
     def duplicate(self, request, pk=None):
         """Clones this datastore under a new id (derived from the given name,
-        or "{name}-copy" if none given). Does not carry over last_result/
-        last_run_at/last_error -- a fresh clone hasn't run yet.
+        or "{id}-copy" if none given -- there's no separate "name" field
+        here, same convention as connections.views.DataConnectionViewSet).
+        Does not carry over last_result/last_run_at/last_error -- a fresh
+        clone hasn't run yet.
         """
         original = self.get_object()
-        name = (request.data.get('name') or f'{original.name or original.id}-copy').strip()
+        name = (request.data.get('name') or f'{original.id}-copy').strip()
         clone = Datastore.objects.create(
             id=unique_slug_id(Datastore, name),
-            name=name,
             source_type=original.source_type,
+            access_type=original.access_type,
             connection=original.connection,
             sql_def=original.sql_def,
             inline_sql=original.inline_sql,
             row_limit=original.row_limit,
-            action=original.action,
             object_key=original.object_key,
+            object_url=original.object_url,
             body=original.body,
             data_url=original.data_url,
-            json_root_path=original.json_root_path,
+            request_method=original.request_method,
+            request_params=original.request_params,
+            request_body=original.request_body,
+            file_path=original.file_path,
+            file_expression=original.file_expression,
             renderer_type=original.renderer_type,
             renderer_config=original.renderer_config,
             default_params=original.default_params,

@@ -22,6 +22,8 @@ interface Props {
   onChange: (rendererType: RendererType, config: Record<string, unknown>) => void
   /** Smaller control heights for the panel-embedded local-datastore card. */
   compact?: boolean
+  /** Restricts the Renderer picker to a subset (e.g. source_type=serialized only offers json/xml/delimited). Defaults to all. */
+  allowedTypes?: RendererType[]
 }
 
 /**
@@ -30,9 +32,11 @@ interface Props {
  * manager's global DatastoreDialog and the editor's LocalDatastoresPanel so
  * the JsonPath/XPath/delimiter/fixed-width editors aren't duplicated.
  */
-export function RendererFields({ rendererType, config, onChange, compact }: Props) {
+export function RendererFields({ rendererType, config, onChange, compact, allowedTypes }: Props) {
   const h = compact ? 'h-7' : 'h-8'
   const textSize = 'text-[0.85em]'
+
+  const options = allowedTypes ? RENDERER_OPTIONS.filter((opt) => allowedTypes.includes(opt.value)) : RENDERER_OPTIONS
 
   const columns = (config.columns as RendererColumn[] | undefined) ?? []
   const setColumns = (next: RendererColumn[]) => onChange(rendererType, { ...config, columns: next })
@@ -48,7 +52,7 @@ export function RendererFields({ rendererType, config, onChange, compact }: Prop
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {RENDERER_OPTIONS.map((opt) => (
+            {options.map((opt) => (
               <SelectItem key={opt.value} value={opt.value}>
                 {opt.label}
               </SelectItem>
@@ -101,13 +105,22 @@ export function RendererFields({ rendererType, config, onChange, compact }: Prop
 
       {rendererType === 'delimited' && (
         <>
-          <Field label="Delimiter">
-            <Input
-              value={(config.delimiter as string) ?? ','}
-              onChange={(e) => onChange(rendererType, { ...config, delimiter: e.target.value })}
-              className={`${h} w-[80px] font-mono ${textSize}`}
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Delimiter">
+              <Input
+                value={(config.delimiter as string) ?? ','}
+                onChange={(e) => onChange(rendererType, { ...config, delimiter: e.target.value })}
+                className={`${h} w-[80px] font-mono ${textSize}`}
+              />
+            </Field>
+            <Field label="Text qualifier" helperText='e.g. " -- blank disables quoting'>
+              <Input
+                value={(config.quote_char as string) ?? '"'}
+                onChange={(e) => onChange(rendererType, { ...config, quote_char: e.target.value })}
+                className={`${h} w-[80px] font-mono ${textSize}`}
+              />
+            </Field>
+          </div>
           <label className="flex items-center gap-2 text-[0.85em]">
             <Checkbox
               checked={(config.has_header as boolean) ?? true}

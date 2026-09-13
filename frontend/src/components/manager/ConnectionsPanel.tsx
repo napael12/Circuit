@@ -24,13 +24,10 @@ import { CONNECTION_TYPE_ICONS, ConnectionDialog } from './ConnectionDialog'
 
 const PRIMARY_CELL_CLASS = 'text-blue-600 dark:text-blue-500 font-medium'
 
-// specs/datastore-streamline.md: 'rest' stays labeled here (rather than
-// removed alongside 'file') purely because DataConnection['type'] itself
-// still includes it -- see that type's own doc comment for why.
 const TYPE_LABELS: Record<DataConnection['type'], string> = {
   sql: 'SQL',
-  rest: 'REST',
   s3: 'S3',
+  http: 'HTTP',
 }
 
 /** A short human summary of what this connection actually points at. */
@@ -38,10 +35,10 @@ function targetSummary(row: DataConnection): string {
   switch (row.type) {
     case 'sql':
       return row.url || [row.host, row.database].filter(Boolean).join(' / ') || row.dialect
-    case 'rest':
-      return row.url
     case 's3':
       return [row.config?.bucket, row.config?.region].filter(Boolean).join(' · ')
+    case 'http':
+      return row.url
     default:
       return ''
   }

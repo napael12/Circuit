@@ -69,7 +69,7 @@ class DataConnectionViewSet(ModelViewSet):
         password/secret_key/token fields unless the user retypes them. A
         blank secret here means "use the saved one", same as a real save --
         mirrors DataConnectionSerializer.update()'s merge behaviour --
-        otherwise testing an existing sql/s3/rest connection from the dialog
+        otherwise testing an existing sql/s3/http connection from the dialog
         would spuriously fail on every field the user didn't retype.
         """
         data = request.data

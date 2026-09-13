@@ -1,4 +1,4 @@
-"""Runs a Datastore (query/action/s3/json) and, for scheduled stores, caches
+"""Runs a Datastore (query/serialized) and, for scheduled stores, caches
 the result and pushes it to subscribed websocket clients.
 
 This is the single place both the on-demand API view (datastore/views.py)
@@ -9,6 +9,8 @@ one execution path.
 from __future__ import annotations
 
 import json
+import os
+import re
 
 import requests
 from asgiref.sync import async_to_sync
@@ -17,70 +19,156 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 
 from breadboard.templating import substitute_template_vars
-from connections.backends import RestConnectionBackend, S3ConnectionBackend, get_backend
+from connections.backends import HttpConnectionBackend, S3ConnectionBackend, get_backend
 
-from catalog.actions import run_action
 from . import activity
 from .engine import execute_query
 from .models import Datastore
 from .renderers import render as render_content
 
 
-def _render_response(ds: Datastore, response) -> object:
-    """source_type=action: apply ds's own renderer if set, else the previous
-    behavior of parsing the whole response body as JSON."""
-    if ds.renderer_type and ds.renderer_type != Datastore.RENDERER_NONE:
-        return render_content(ds.renderer_type, response.content, ds.renderer_config)
-    try:
-        return response.json()
-    except ValueError:
-        return response.text
-
-
-def _render_raw(ds: Datastore, raw: bytes) -> list[dict]:
-    """source_type=s3: apply ds's own renderer if set, else wrap the raw
-    content as a single-column table so the result is always rows/columns."""
-    if ds.renderer_type and ds.renderer_type != Datastore.RENDERER_NONE:
-        return render_content(ds.renderer_type, raw, ds.renderer_config)
-    text = raw.decode('utf-8', errors='replace') if isinstance(raw, (bytes, bytearray)) else raw
-    return [{'content': text}]
-
-
-def _fetch_s3(ds: Datastore, params: dict) -> list[dict]:
-    backend = get_backend(ds.connection)
-    assert isinstance(backend, S3ConnectionBackend)
-    bucket = backend.cfg('bucket')
-    if not bucket:
-        raise ValueError('The S3 connection has no bucket configured.')
-    key = substitute_template_vars(ds.object_key, params)
-    if not key:
-        raise ValueError('No object key configured.')
-    obj = backend.client().get_object(Bucket=bucket, Key=key)
-    return _render_raw(ds, obj['Body'].read())
-
-
-def _fetch_json_body(ds: Datastore, params: dict) -> bytes | str:
-    """source_type=json's Body (specs/json_datastore.md): a REST connection's
-    Data URL when ``connection`` is set, else the literal ``body`` text --
-    which covers both the "hard-coded" and "passed as a parameter" cases,
-    the latter just being ``body`` set to a bare ${param}.
+def substitute_config(value, params: dict):
+    """Recursively applies substitute_template_vars to every string in a
+    renderer_config value (e.g. root_path, a columns[].path, delimiter) --
+    renderer_config is documented (Datastore.default_params) as supporting
+    ${param} throughout, but render_content() itself just consumes the
+    config as-is, so every caller resolves it against the live params first.
     """
-    if not ds.connection_id:
-        return substitute_template_vars(ds.body, params) or ''
-    backend = get_backend(ds.connection)
-    assert isinstance(backend, RestConnectionBackend)
-    base = (substitute_template_vars(backend.base_url, params) or '').rstrip('/')
-    data_url = substitute_template_vars(ds.data_url, params) if ds.data_url else ''
-    url = f"{base}/{data_url.lstrip('/')}" if data_url else base
-    resp = requests.get(url, **backend.request_kwargs())
+    if isinstance(value, str):
+        return substitute_template_vars(value, params)
+    if isinstance(value, dict):
+        return {k: substitute_config(v, params) for k, v in value.items()}
+    if isinstance(value, list):
+        return [substitute_config(v, params) for v in value]
+    return value
+
+
+def _fetch_serialized_http(ds: Datastore, params: dict) -> bytes | str:
+    url = substitute_template_vars(ds.data_url, params)
+    if not url:
+        raise ValueError('No URL configured.')
+    if ds.connection_id:
+        backend = get_backend(ds.connection)
+        assert isinstance(backend, HttpConnectionBackend)
+        kwargs = backend.request_kwargs()
+    else:
+        kwargs = {'headers': {}, 'params': {}, 'auth': None, 'timeout': 30}
+
+    request_params = {k: substitute_template_vars(str(v), params) for k, v in (ds.request_params or {}).items()}
+    query_params = {**kwargs['params'], **request_params}
+    method = ds.request_method or Datastore.METHOD_GET
+    data = substitute_template_vars(ds.request_body, params) if method == Datastore.METHOD_POST else None
+
+    resp = requests.request(
+        method, url, params=query_params or None, data=data,
+        headers=kwargs['headers'], auth=kwargs['auth'], timeout=kwargs['timeout'],
+    )
     resp.raise_for_status()
     return resp.content
 
 
-def _fetch_json(ds: Datastore, params: dict) -> list[dict]:
-    raw = _fetch_json_body(ds, params)
-    root_path = substitute_template_vars(ds.json_root_path, params) or '$'
-    return render_content('json', raw, {'root_path': root_path})
+_S3_VIRTUAL_HOSTED_RE = re.compile(r'^([^./]+)\.s3[.-](?:([a-z0-9-]+)\.)?amazonaws\.com$')
+_S3_PATH_STYLE_RE = re.compile(r'^s3[.-](?:([a-z0-9-]+)\.)?amazonaws\.com$')
+
+
+def _parse_s3_url(url: str) -> tuple[str, str] | None:
+    """Pulls (bucket, key) out of an s3:// URI or an s3/virtual-hosted-style
+    https URL (what S3's own console labels "S3 URI" / "Object URL") --
+    returns None for anything else (e.g. a plain public HTTP URL), which the
+    caller falls back to fetching unauthenticated.
+    """
+    from urllib.parse import unquote, urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme == 's3':
+        return parsed.netloc, unquote(parsed.path).lstrip('/')
+    if parsed.scheme not in ('http', 'https'):
+        return None
+    path = unquote(parsed.path).lstrip('/')
+    match = _S3_VIRTUAL_HOSTED_RE.match(parsed.netloc)
+    if match:
+        return match.group(1), path
+    if _S3_PATH_STYLE_RE.match(parsed.netloc) and '/' in path:
+        bucket, key = path.split('/', 1)
+        return bucket, key
+    return None
+
+
+def _fetch_serialized_s3(ds: Datastore, params: dict) -> bytes | str:
+    object_url = substitute_template_vars(ds.object_url, params)
+    if object_url:
+        parsed = _parse_s3_url(object_url)
+        if parsed and ds.connection_id:
+            bucket, key = parsed
+            backend = get_backend(ds.connection)
+            assert isinstance(backend, S3ConnectionBackend)
+            obj = backend.client().get_object(Bucket=bucket, Key=key)
+            return obj['Body'].read()
+        # No connection (or an unrecognized URL shape): fetch unauthenticated
+        # -- the "public bucket URL" case.
+        resp = requests.get(object_url, timeout=30)
+        resp.raise_for_status()
+        return resp.content
+
+    if not ds.connection_id:
+        raise ValueError('No S3 connection or object URL configured.')
+    backend = get_backend(ds.connection)
+    assert isinstance(backend, S3ConnectionBackend)
+
+    key = substitute_template_vars(ds.object_key, params)
+    parsed_key = _parse_s3_url(key) if key else None
+    if parsed_key:
+        bucket, key = parsed_key
+        obj = backend.client().get_object(Bucket=bucket, Key=key)
+        return obj['Body'].read()
+
+    if not key:
+        raise ValueError('No object key configured.')
+    bucket = backend.cfg('bucket')
+    if not bucket:
+        raise ValueError('The S3 connection has no bucket configured.')
+    obj = backend.client().get_object(Bucket=bucket, Key=key)
+    return obj['Body'].read()
+
+
+def _fetch_serialized_file(ds: Datastore, params: dict) -> bytes | str:
+    directory = substitute_template_vars(ds.file_path, params)
+    if not directory:
+        raise ValueError('No file path configured.')
+    expression = substitute_template_vars(ds.file_expression, params) or ''
+
+    exact = os.path.join(directory, expression) if expression else None
+    if exact and os.path.isfile(exact):
+        target = exact
+    else:
+        if not expression:
+            raise ValueError('No filename or regex configured.')
+        pattern = re.compile(expression)
+        candidates = sorted(
+            name for name in os.listdir(directory)
+            if pattern.search(name) and os.path.isfile(os.path.join(directory, name))
+        )
+        if not candidates:
+            raise ValueError(f'No file matching "{expression}" found in "{directory}".')
+        target = os.path.join(directory, candidates[0])
+
+    with open(target, 'rb') as f:
+        return f.read()
+
+
+def _fetch_serialized(ds: Datastore, params: dict) -> list[dict]:
+    override = substitute_template_vars(ds.body, params)
+    if override:
+        raw = override
+    elif ds.access_type == Datastore.ACCESS_HTTP:
+        raw = _fetch_serialized_http(ds, params)
+    elif ds.access_type == Datastore.ACCESS_S3:
+        raw = _fetch_serialized_s3(ds, params)
+    elif ds.access_type == Datastore.ACCESS_FILE:
+        raw = _fetch_serialized_file(ds, params)
+    else:
+        raise ValueError(f'Unknown access_type: {ds.access_type}')
+    return render_content(ds.renderer_type, raw, substitute_config(ds.renderer_config, params))
 
 
 def run_datastore(ds: Datastore, params: dict | None = None, row_limit: int | None = None):
@@ -98,14 +186,8 @@ def run_datastore(ds: Datastore, params: dict | None = None, row_limit: int | No
         sql_text = substitute_template_vars(ds.sql_text(), merged_params)
         return execute_query(ds.connection, sql_text, merged_params, limit)
 
-    if ds.source_type == Datastore.SOURCE_ACTION:
-        response = run_action(ds.action, merged_params)
-        response.raise_for_status()
-        result = _render_response(ds, response)
-    elif ds.source_type == Datastore.SOURCE_S3:
-        result = _fetch_s3(ds, merged_params)
-    elif ds.source_type == Datastore.SOURCE_JSON:
-        result = _fetch_json(ds, merged_params)
+    if ds.source_type == Datastore.SOURCE_SERIALIZED:
+        result = _fetch_serialized(ds, merged_params)
     else:
         raise ValueError(f'Unknown source_type: {ds.source_type}')
 

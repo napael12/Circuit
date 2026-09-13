@@ -9,16 +9,8 @@ from .models import Datastore
 
 
 def effective_connection(datastore: Datastore):
-    """The DataConnection this datastore actually runs against, or None.
-
-    `connection` is used directly for source_type=query/s3/file/json;
-    source_type=action instead carries its connection on the Action.
-    """
-    if datastore.connection_id:
-        return datastore.connection
-    if datastore.action_id:
-        return datastore.action.connection
-    return None
+    """The DataConnection this datastore actually runs against, or None."""
+    return datastore.connection
 
 
 def apply_cascaded_roles(datastore: Datastore) -> None:
@@ -32,14 +24,11 @@ def apply_cascaded_roles(datastore: Datastore) -> None:
 
 def cascade_connection_roles(connection) -> None:
     """Re-applies `connection`'s current allowed_roles onto every Datastore
-    built on it (directly, or via a source_type=action Action) -- called
-    when a connection's own roles are edited after Datastores already exist.
+    built on it -- called when a connection's own roles are edited after
+    Datastores already exist.
     """
-    from django.db.models import Q
-
     role_ids = list(connection.allowed_roles.values_list('id', flat=True))
     if not role_ids:
         return
-    affected = Datastore.objects.filter(Q(connection=connection) | Q(action__connection=connection))
-    for ds in affected:
+    for ds in Datastore.objects.filter(connection=connection):
         ds.allowed_roles.set(role_ids)

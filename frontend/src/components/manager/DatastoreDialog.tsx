@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTable, type ColumnDef } from '@tanstack/react-table'
-import { ChevronRight, Plus, Trash2 } from 'lucide-react'
+import { ChevronRight, Copy, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -18,11 +18,12 @@ import { DataGrid, DataGridContainer, dataGridFeatures, type DataGridFeatures } 
 import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
 import { DataGridTable } from '../reui/data-grid/data-grid-table'
 import { api } from '../../api/client'
-import type { ActionDef, DataConnection, Datastore, DatastorePreviewResult, RendererType, Role } from '../../api/types'
+import type { DataConnection, Datastore, DatastorePreviewResult, PanelDatastoreRef, RendererType, Role } from '../../api/types'
 import { discoverAllParams } from '../../utils/sqlParams'
+import { newId } from '../editor/panelTree'
 import { RoleMultiSelect } from './RoleMultiSelect'
 import { DatastorePreviewPanel } from './DatastorePreviewPanel'
-import { RendererFields } from './RendererFields'
+import { SerializedDataFields } from './SerializedDataFields'
 
 interface Option {
   value: string
@@ -33,12 +34,25 @@ interface Props {
   /** null = creating a new datastore. */
   initial: Datastore | null
   connections: DataConnection[]
-  actions: ActionDef[]
-  actionOptions: Option[]
-  roles: Role[]
+  /** Unused (and unnecessary to fetch) when scope='local' -- Access roles don't apply there. */
+  roles?: Role[]
   initialTab?: 'edit' | 'preview'
+  /**
+   * 'global' (default): saved as a shared datastore.models.Datastore row via
+   * the Manager API. 'local': embedded in a panel's own JSON instead (see
+   * PanelDatastoreRef) -- used by editor.DatastoreRefDialog so panels get
+   * the exact same editing experience as the Manager's global datastores,
+   * minus the sections that don't apply to a panel-local binding (Access
+   * roles, API mode, Refresh mode -- always on-demand).
+   */
+  scope?: 'global' | 'local'
+  /** scope='local' only: the PanelDatastoreRef.id to preserve across edits (a new one is minted when absent). */
+  localId?: string
   onClose: () => void
-  onSaved: () => void
+  /** scope='global' only. */
+  onSaved?: () => void
+  /** scope='local' only: receives the built PanelDatastoreRef instead of an API call being made. */
+  onSaveLocal?: (ref: PanelDatastoreRef) => void
 }
 
 interface ParamRow {
@@ -48,50 +62,59 @@ interface ParamRow {
   discovered: boolean
 }
 
-// A Datasource's source_type is built on a matching connections.models.
-// DataConnection type -- see backend/connections/backends.py and
-// specs/datasource_enhancements.md. source_type=action has no connection
-// picker of its own here: the connection lives on the selected Action.
-// specs/datastore-streamline.md removed source_type=file entirely (File
-// system connections no longer exist).
-const CONNECTION_TYPE_FOR_SOURCE: Partial<Record<Datastore['source_type'], DataConnection['type']>> = {
-  query: 'sql',
-  s3: 's3',
-  json: 'rest',
-}
-
 const SOURCE_TYPE_OPTIONS: { value: Datastore['source_type']; label: string }[] = [
   { value: 'query', label: 'SQL query' },
-  { value: 'action', label: 'REST (Action)' },
-  { value: 's3', label: 'S3 object' },
-  { value: 'json', label: 'JSON' },
+  { value: 'serialized', label: 'Serialized Data' },
 ]
 
 /**
- * Global (Manager-managed) datastore editor -- one of SQL/REST/S3
- * (specs/datasource_enhancements.md), each with its own type-specific
- * fields and, for REST/S3, a Renderer (see RendererFields). :name /
+ * Global (Manager-managed) datastore editor -- SQL query or Serialized Data
+ * (specs/datasource_enhancements.md, specs/serialized-datastore.md). :name /
  * ${name} variables are derived live from whichever fields are relevant to
  * the current type and edited as default values in a data grid. Edit/
  * Preview share one dialog via tabs instead of Preview opening a second
  * modal.
  */
-export function DatastoreDialog({ initial, connections, actions, actionOptions, roles, initialTab = 'edit', onClose, onSaved }: Props) {
+export function DatastoreDialog({
+  initial,
+  connections,
+  roles = [],
+  initialTab = 'edit',
+  scope = 'global',
+  localId,
+  onClose,
+  onSaved,
+  onSaveLocal,
+}: Props) {
   const isEdit = initial !== null
+  const isLocal = scope === 'local'
   const [tab, setTab] = useState<'edit' | 'preview'>(initialTab)
   const [id, setId] = useState(initial?.id ?? '')
-  const [name, setName] = useState(initial?.name ?? '')
   const [sourceType, setSourceType] = useState<Datastore['source_type']>(initial?.source_type ?? 'query')
   const [connection, setConnection] = useState(initial?.connection ?? '')
   const [inlineSql, setInlineSql] = useState(initial?.inline_sql ?? '')
   const [rowLimit, setRowLimit] = useState<number | ''>(initial?.row_limit ?? '')
-  const [actionId, setActionId] = useState(initial?.action ?? '')
   const [objectKey, setObjectKey] = useState(initial?.object_key ?? '')
+  const [objectUrl, setObjectUrl] = useState(initial?.object_url ?? '')
   const [body, setBody] = useState(initial?.body ?? '')
+  const [bodyOpen, setBodyOpen] = useState(!!initial?.body)
   const [dataUrl, setDataUrl] = useState(initial?.data_url ?? '')
-  const [jsonRootPath, setJsonRootPath] = useState(initial?.json_root_path ?? '')
+  const [accessType, setAccessType] = useState<Datastore['access_type']>(initial?.access_type || 'http')
+  const [requestMethod, setRequestMethod] = useState<Datastore['request_method']>(initial?.request_method ?? 'GET')
+  const [requestParams, setRequestParams] = useState<Record<string, string>>(initial?.request_params ?? {})
+  const [requestBody, setRequestBody] = useState(initial?.request_body ?? '')
+  const [filePath, setFilePath] = useState(initial?.file_path ?? '')
+  const [fileExpression, setFileExpression] = useState(initial?.file_expression ?? '')
   const [rendererType, setRendererType] = useState<RendererType>(initial?.renderer_type ?? 'none')
   const [rendererConfig, setRendererConfig] = useState<Record<string, unknown>>(initial?.renderer_config ?? {})
+  // source_type=serialized only offers json/xml/delimited (no "None" option)
+  // -- a brand-new serialized datastore starts at renderer_type='none', so
+  // this is what's actually shown/saved until the user picks one explicitly.
+  const effectiveRendererType = sourceType === 'serialized' && rendererType === 'none' ? 'json' : rendererType
+  // Push posts a raw JSON body straight through the JSON renderer
+  // (breadboard.public_api.PushDatastoreView) -- only while this datastore's
+  // own renderer is JSON.
+  const pushEligible = sourceType === 'serialized' && effectiveRendererType === 'json'
   const [apiMode, setApiMode] = useState<Datastore['api_mode']>(initial?.api_mode ?? 'none')
   const [refreshMode, setRefreshMode] = useState<Datastore['refresh_mode']>(initial?.refresh_mode ?? 'on_demand')
   const [cronSchedule, setCronSchedule] = useState(initial?.cron_schedule ?? '')
@@ -105,20 +128,26 @@ export function DatastoreDialog({ initial, connections, actions, actionOptions, 
   const [allowedRoles, setAllowedRoles] = useState<number[]>(initial?.allowed_roles ?? [])
 
   const connectionOptions = useMemo<Option[]>(() => {
-    const type = CONNECTION_TYPE_FOR_SOURCE[sourceType]
+    const type =
+      sourceType === 'serialized'
+        ? accessType === 's3'
+          ? 's3'
+          : accessType === 'http'
+            ? 'http'
+            : undefined
+        : sourceType === 'query'
+          ? 'sql'
+          : undefined
     if (!type) return []
     return connections.filter((c) => c.type === type).map((c) => ({ value: c.id, label: c.id }))
-  }, [connections, sourceType])
-
-  const selectedAction = useMemo(() => actions.find((a) => a.id === actionId), [actions, actionId])
+  }, [connections, sourceType, accessType])
 
   // specs/permissions.md #2a: a restricted connection's roles cascade to any
   // datastore built on it -- mirrors backend/datastore/roles.py so the
   // picker never shows a value the save would silently override.
   const effectiveConnection = useMemo(() => {
-    const connId = sourceType === 'action' ? selectedAction?.connection : connection
-    return connections.find((c) => c.id === connId) ?? null
-  }, [connections, connection, selectedAction, sourceType])
+    return connections.find((c) => c.id === connection) ?? null
+  }, [connections, connection])
   const inheritedRoleIds = effectiveConnection?.allowed_roles ?? []
   const rolesLocked = inheritedRoleIds.length > 0
   const displayedRoleIds = rolesLocked ? inheritedRoleIds : allowedRoles
@@ -127,17 +156,17 @@ export function DatastoreDialog({ initial, connections, actions, actionOptions, 
     const sources = [
       inlineSql,
       objectKey,
+      objectUrl,
       body,
       dataUrl,
-      jsonRootPath,
+      requestBody,
+      filePath,
+      fileExpression,
+      JSON.stringify(requestParams),
       JSON.stringify(rendererConfig),
-      selectedAction?.url,
-      selectedAction?.path,
-      selectedAction?.request_body,
-      selectedAction ? JSON.stringify(selectedAction.headers) : undefined,
     ]
     return new Set(discoverAllParams(...sources))
-  }, [inlineSql, objectKey, body, dataUrl, jsonRootPath, rendererConfig, selectedAction])
+  }, [inlineSql, objectKey, objectUrl, body, dataUrl, requestBody, filePath, fileExpression, requestParams, rendererConfig])
 
   const paramRows = useMemo<ParamRow[]>(() => {
     const names = new Set([...discoveredParamNames, ...Object.keys(defaultParams)])
@@ -227,24 +256,30 @@ export function DatastoreDialog({ initial, connections, actions, actionOptions, 
 
   const buildPayload = () => ({
     id,
-    name,
     source_type: sourceType,
-    connection: sourceType === 'action' ? null : connection || null,
+    access_type: sourceType === 'serialized' ? accessType : '',
+    connection: connection || null,
     sql_def: null,
     inline_sql: sourceType === 'query' ? inlineSql : '',
     row_limit: rowLimit === '' ? null : rowLimit,
-    action: sourceType === 'action' ? actionId || null : null,
-    object_key: sourceType === 's3' ? objectKey : '',
-    body: sourceType === 'json' ? body : '',
-    data_url: sourceType === 'json' ? dataUrl : '',
-    json_root_path: sourceType === 'json' ? jsonRootPath : '',
-    renderer_type: sourceType === 'query' || sourceType === 'json' ? 'none' : rendererType,
-    renderer_config: sourceType === 'query' || sourceType === 'json' ? {} : rendererConfig,
+    object_key: sourceType === 'serialized' && accessType === 's3' ? objectKey : '',
+    object_url: sourceType === 'serialized' && accessType === 's3' ? objectUrl : '',
+    body: sourceType === 'serialized' && bodyOpen ? body : '',
+    data_url: sourceType === 'serialized' && accessType === 'http' ? dataUrl : '',
+    request_method: sourceType === 'serialized' && accessType === 'http' ? requestMethod : 'GET',
+    request_params: sourceType === 'serialized' && accessType === 'http' ? requestParams : {},
+    request_body:
+      sourceType === 'serialized' && accessType === 'http' && requestMethod === 'POST' ? requestBody : '',
+    file_path: sourceType === 'serialized' && accessType === 'file' ? filePath : '',
+    file_expression: sourceType === 'serialized' && accessType === 'file' ? fileExpression : '',
+    renderer_type: sourceType === 'serialized' ? effectiveRendererType : 'none',
+    renderer_config: sourceType === 'serialized' ? rendererConfig : {},
     default_params: defaultParams,
-    // Push is only ever meaningful for source_type=json (enforced again
-    // server-side in DatastoreSerializer.validate) -- force back to 'none'
-    // if the type was changed away from json while Push was selected.
-    api_mode: apiMode === 'push' && sourceType !== 'json' ? 'none' : apiMode,
+    // Push is only ever meaningful for serialized datastores using the JSON
+    // renderer (enforced again server-side in DatastoreSerializer.validate)
+    // -- force back to 'none' if the renderer was changed away from that
+    // while Push was selected.
+    api_mode: apiMode === 'push' && !pushEligible ? 'none' : apiMode,
     refresh_mode: refreshMode,
     cron_schedule: cronSchedule,
     idle_timeout_seconds: refreshMode === 'scheduled' ? (idleTimeoutSeconds === '' ? null : idleTimeoutSeconds) : null,
@@ -254,7 +289,44 @@ export function DatastoreDialog({ initial, connections, actions, actionOptions, 
     allowed_roles: allowedRoles,
   })
 
+  const copyApiUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/api/v1/datastores/${id}/${apiMode}/`)
+      toast.success('URL copied.')
+    } catch {
+      toast.error('Clipboard access was denied.')
+    }
+  }
+
+  const buildLocalRef = (): PanelDatastoreRef => ({
+    id: localId ?? newId('ds'),
+    name: id,
+    scope: 'local',
+    source_type: sourceType,
+    access_type: sourceType === 'serialized' ? accessType : '',
+    connection: connection || undefined,
+    inline_sql: sourceType === 'query' ? inlineSql : '',
+    row_limit: rowLimit === '' ? undefined : rowLimit,
+    object_key: sourceType === 'serialized' && accessType === 's3' ? objectKey : '',
+    object_url: sourceType === 'serialized' && accessType === 's3' ? objectUrl : '',
+    body: sourceType === 'serialized' && bodyOpen ? body : '',
+    data_url: sourceType === 'serialized' && accessType === 'http' ? dataUrl : '',
+    request_method: sourceType === 'serialized' && accessType === 'http' ? requestMethod : 'GET',
+    request_params: sourceType === 'serialized' && accessType === 'http' ? requestParams : {},
+    request_body:
+      sourceType === 'serialized' && accessType === 'http' && requestMethod === 'POST' ? requestBody : '',
+    file_path: sourceType === 'serialized' && accessType === 'file' ? filePath : '',
+    file_expression: sourceType === 'serialized' && accessType === 'file' ? fileExpression : '',
+    renderer_type: sourceType === 'serialized' ? effectiveRendererType : 'none',
+    renderer_config: sourceType === 'serialized' ? rendererConfig : {},
+    default_params: defaultParams,
+  })
+
   const handleSave = async () => {
+    if (isLocal) {
+      onSaveLocal?.(buildLocalRef())
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -264,7 +336,7 @@ export function DatastoreDialog({ initial, connections, actions, actionOptions, 
         await api.post('/datastores/', buildPayload())
       }
       toast.success('Saved.')
-      onSaved()
+      onSaved?.()
     } catch (err) {
       setError(String(err))
     } finally {
@@ -282,7 +354,7 @@ export function DatastoreDialog({ initial, connections, actions, actionOptions, 
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 pr-6">
-            <span className="flex-1 truncate">{isEdit ? id : 'New Datastore'}</span>
+            <span className="flex-1 truncate">{isEdit ? id : isLocal ? 'New local datastore' : 'New Datastore'}</span>
             {isEdit && (
               <Badge variant="secondary" className="shrink-0 font-normal">
                 {SOURCE_TYPE_OPTIONS.find((opt) => opt.value === sourceType)?.label}
@@ -306,35 +378,44 @@ export function DatastoreDialog({ initial, connections, actions, actionOptions, 
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            {!isEdit && (
-              <Field label="Id">
-                <Input value={id} onChange={(e) => setId(e.target.value)} className="h-8 text-[0.85em]" />
+            <div className="grid grid-cols-2 gap-3">
+              <Field
+                label="Name"
+                helperText={
+                  isLocal
+                    ? 'How components on this panel reference it'
+                    : 'Letters, numbers, hyphens/underscores -- also the id, like connections'
+                }
+              >
+                <Input
+                  value={id}
+                  disabled={isEdit}
+                  onChange={(e) => setId(e.target.value)}
+                  className="h-8 text-[0.85em]"
+                />
               </Field>
-            )}
-            {!isEdit && (
-              <Field label="Type">
-                <Select
-                  value={sourceType}
-                  onValueChange={(v) => setSourceType(v as Datastore['source_type'])}
-                >
-                  <SelectTrigger className="h-8 w-full text-[0.85em]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SOURCE_TYPE_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            )}
+              {!isEdit && (
+                <Field label="Type">
+                  <Select
+                    value={sourceType}
+                    onValueChange={(v) => setSourceType(v as Datastore['source_type'])}
+                  >
+                    <SelectTrigger className="h-8 w-full text-[0.85em]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SOURCE_TYPE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Name">
-                <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 text-[0.85em]" />
-              </Field>
               {sourceType === 'query' && (
                 <Field label="SQL connection">
                   <Select value={connection} onValueChange={setConnection}>
@@ -351,68 +432,22 @@ export function DatastoreDialog({ initial, connections, actions, actionOptions, 
                   </Select>
                 </Field>
               )}
-              {sourceType === 'action' && (
-                <Field label="Action" helperText="Manage its data URL, request body, and headers in the Actions tab">
-                  <Select value={actionId} onValueChange={setActionId}>
-                    <SelectTrigger className="h-8 w-full text-[0.85em]">
-                      <SelectValue placeholder="none" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {actionOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              )}
-              {sourceType === 's3' && (
-                <Field label="S3 connection">
-                  <Select value={connection} onValueChange={setConnection}>
-                    <SelectTrigger className="h-8 w-full text-[0.85em]">
-                      <SelectValue placeholder="none" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {connectionOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              )}
-              {sourceType === 'json' && (
-                <Field label="REST connection" helperText="Optional -- leave unset to use Body directly">
-                  <Select value={connection} onValueChange={setConnection}>
-                    <SelectTrigger className="h-8 w-full text-[0.85em]">
-                      <SelectValue placeholder="none" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {connectionOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              )}
             </div>
 
-            <RoleMultiSelect
-              roles={roles}
-              value={displayedRoleIds}
-              onChange={setAllowedRoles}
-              disabled={rolesLocked}
-              collapsible
-              helperText={
-                rolesLocked
-                  ? `Inherited from connection "${effectiveConnection?.id}" -- edit its access roles to change this.`
-                  : undefined
-              }
-            />
+            {!isLocal && (
+              <RoleMultiSelect
+                roles={roles}
+                value={displayedRoleIds}
+                onChange={setAllowedRoles}
+                disabled={rolesLocked}
+                collapsible
+                helperText={
+                  rolesLocked
+                    ? `Inherited from connection "${effectiveConnection?.id}" -- edit its access roles to change this.`
+                    : undefined
+                }
+              />
+            )}
 
             {sourceType === 'query' && (
               <Field label="Query" helperText='Use :paramname bind variables, or ${paramname} to substitute the value directly into the text'>
@@ -425,46 +460,39 @@ export function DatastoreDialog({ initial, connections, actions, actionOptions, 
               </Field>
             )}
 
-            {sourceType === 's3' && (
-              <Field label="Object key / path" helperText="Within the connection's configured bucket. Supports ${param}">
-                <Input
-                  value={objectKey}
-                  onChange={(e) => setObjectKey(e.target.value)}
-                  className="font-mono h-8 text-[0.85em]"
-                />
-              </Field>
-            )}
-
-            {sourceType === 'json' && connection && (
-              <Field label="Data URL" helperText="Endpoint to GET the JSON body from, appended to the connection's URL. Supports ${param}">
-                <Input value={dataUrl} onChange={(e) => setDataUrl(e.target.value)} className="font-mono h-8 text-[0.85em]" />
-              </Field>
-            )}
-
-            {sourceType === 'json' && !connection && (
-              <Field label="Body" helperText='JSON text, or a bare ${param} to pass the body in as a parameter. Supports ${param}'>
-                <Textarea rows={4} value={body} onChange={(e) => setBody(e.target.value)} className="font-mono text-[0.85em]" />
-              </Field>
-            )}
-
-            {sourceType === 'json' && (
-              <Field label="Root JSON Path" helperText='Optional JsonPath selecting the row(s), e.g. $.phoneNumbers[*] -- defaults to "$" (the whole document)'>
-                <Input
-                  value={jsonRootPath}
-                  onChange={(e) => setJsonRootPath(e.target.value)}
-                  className="font-mono h-8 text-[0.85em]"
-                />
-              </Field>
-            )}
-
-            {sourceType !== 'query' && sourceType !== 'json' && (
-              <RendererFields
-                rendererType={rendererType}
-                config={rendererConfig}
-                onChange={(t, c) => {
+            {sourceType === 'serialized' && (
+              <SerializedDataFields
+                accessType={accessType}
+                onAccessTypeChange={setAccessType}
+                connectionOptions={connectionOptions}
+                connection={connection}
+                onConnectionChange={setConnection}
+                dataUrl={dataUrl}
+                onDataUrlChange={setDataUrl}
+                requestMethod={requestMethod}
+                onRequestMethodChange={setRequestMethod}
+                requestParams={requestParams}
+                onRequestParamsChange={setRequestParams}
+                requestBody={requestBody}
+                onRequestBodyChange={setRequestBody}
+                objectKey={objectKey}
+                onObjectKeyChange={setObjectKey}
+                objectUrl={objectUrl}
+                onObjectUrlChange={setObjectUrl}
+                filePath={filePath}
+                onFilePathChange={setFilePath}
+                fileExpression={fileExpression}
+                onFileExpressionChange={setFileExpression}
+                rendererType={effectiveRendererType}
+                rendererConfig={rendererConfig}
+                onRendererChange={(t, c) => {
                   setRendererType(t)
                   setRendererConfig(c)
                 }}
+                body={body}
+                onBodyChange={setBody}
+                bodyOpen={bodyOpen}
+                onBodyOpenChange={setBodyOpen}
               />
             )}
 
@@ -476,56 +504,68 @@ export function DatastoreDialog({ initial, connections, actions, actionOptions, 
                 className="h-8 text-[0.85em]"
               />
             </Field>
-            <Field
-              label="API mode"
-              helperText={
-                apiMode === 'push'
-                  ? 'Refresh mode is ignored while Push is enabled -- data arrives via the push API call instead.'
-                  : 'specs/api_datastore.md: exposes this datastore through the public, API-key-authenticated pull/push endpoints.'
-              }
-            >
-              <Select value={apiMode} onValueChange={(v) => setApiMode(v as Datastore['api_mode'])}>
-                <SelectTrigger className="h-8 w-full text-[0.85em]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Disabled</SelectItem>
-                  <SelectItem value="pull">Pull</SelectItem>
-                  <SelectItem value="push" disabled={sourceType !== 'json'}>
-                    Push{sourceType !== 'json' ? ' (JSON datastores only)' : ''}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Refresh mode" helperText={apiMode === 'push' ? 'Ignored while API mode is Push.' : undefined}>
-              <Select value={refreshMode} onValueChange={(v) => setRefreshMode(v as Datastore['refresh_mode'])}>
-                <SelectTrigger className="h-8 w-full text-[0.85em]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="on_demand">On demand</SelectItem>
-                  <SelectItem value="scheduled">Scheduled (cron)</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            {refreshMode === 'scheduled' && (
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Cron schedule" helperText='"minute hour day month day_of_week"'>
-                  <Input value={cronSchedule} onChange={(e) => setCronSchedule(e.target.value)} className="h-8 text-[0.85em]" />
-                </Field>
+            {!isLocal && (
+              <>
                 <Field
-                  label="Idle timeout (seconds)"
-                  helperText="Stop refreshing once no dashboard has this open for this long. 0 = never stop."
+                  label="API mode"
+                  helperText={
+                    apiMode === 'push'
+                      ? 'Refresh mode is ignored while Push is enabled -- data arrives via the push API call instead.'
+                      : undefined
+                  }
                 >
-                  <Input
-                    type="number"
-                    min={0}
-                    value={idleTimeoutSeconds}
-                    onChange={(e) => setIdleTimeoutSeconds(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="h-8 text-[0.85em]"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Select value={apiMode} onValueChange={(v) => setApiMode(v as Datastore['api_mode'])}>
+                      <SelectTrigger className="h-8 flex-1 text-[0.85em]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Disabled</SelectItem>
+                        <SelectItem value="pull">Pull</SelectItem>
+                        <SelectItem value="push" disabled={!pushEligible}>
+                          Push{!pushEligible ? ' (Serialized Data with the JSON renderer only)' : ''}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {apiMode !== 'none' && id && (
+                      <Button variant="outline" size="sm" onClick={copyApiUrl}>
+                        <Copy />
+                        Copy URL
+                      </Button>
+                    )}
+                  </div>
                 </Field>
-              </div>
+                <Field label="Refresh mode" helperText={apiMode === 'push' ? 'Ignored while API mode is Push.' : undefined}>
+                  <Select value={refreshMode} onValueChange={(v) => setRefreshMode(v as Datastore['refresh_mode'])}>
+                    <SelectTrigger className="h-8 w-full text-[0.85em]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="on_demand">On demand</SelectItem>
+                      <SelectItem value="scheduled">Scheduled (cron)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                {refreshMode === 'scheduled' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Cron schedule" helperText='"minute hour day month day_of_week"'>
+                      <Input value={cronSchedule} onChange={(e) => setCronSchedule(e.target.value)} className="h-8 text-[0.85em]" />
+                    </Field>
+                    <Field
+                      label="Idle timeout (seconds)"
+                      helperText="Stop refreshing once no dashboard has this open for this long. 0 = never stop."
+                    >
+                      <Input
+                        type="number"
+                        min={0}
+                        value={idleTimeoutSeconds}
+                        onChange={(e) => setIdleTimeoutSeconds(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="h-8 text-[0.85em]"
+                      />
+                    </Field>
+                  </div>
+                )}
+              </>
             )}
             <button
               type="button"
@@ -565,7 +605,7 @@ export function DatastoreDialog({ initial, connections, actions, actionOptions, 
               onRun={(params, limit) =>
                 api.post<DatastorePreviewResult>('/datastores/preview-config/', { ...buildPayload(), params, limit })
               }
-              name={name || id}
+              name={id}
             />
           </TabsContent>
         </Tabs>

@@ -17,24 +17,29 @@ export interface DataConnection {
   id: string
   description: string
   /**
-   * specs/datastore-streamline.md removed 'rest'/'file' as creatable/editable
-   * types -- 'rest' stays in the union because catalog.models.Action.connection
-   * can technically still reference a pre-existing one, but no new Connection
-   * can be created as 'rest' or 'file' anymore (see ConnectionDialog.tsx).
+   * 'http' (specs/http-connection.md): authorization for arbitrary HTTP
+   * endpoints, used by source_type='serialized' datastores.
    */
-  type: 'sql' | 'rest' | 's3'
+  type: 'sql' | 's3' | 'http'
   dialect: string
   host: string
   port: number | null
   database: string
   options: Record<string, unknown>
+  /** type=http: optional "Authorization URL" -- required for auth_type=digest, otherwise only used by Test. */
   url: string
+  /** type=http: Basic/Digest auth username. */
   username: string
   /**
    * Per-type settings that don't fit the shared columns above -- see
    * backend/connections/models.py's DataConnection.config docstring for the
-   * shape per type. Secret-shaped keys (secret_key, token) come back
-   * blanked from the API; leave them blank on save to keep the stored value.
+   * shape per type. Secret-shaped keys (secret_key, token, api_key_value)
+   * come back blanked from the API; leave them blank on save to keep the
+   * stored value.
+   *
+   * type=http: {auth_type: 'none'|'basic'|'api_key'|'bearer'|'digest',
+   *   api_key_name?, api_key_value?, api_key_location?: 'header'|'query',
+   *   token?, digest_algorithm?, headers?: Record<string, string>}.
    */
   config: Record<string, unknown>
   max_rows: number | null
@@ -60,21 +65,6 @@ export interface SqlDef {
   updated_by: number | null
 }
 
-export interface ActionDef {
-  id: string
-  description: string
-  connection: string | null
-  path: string
-  url: string
-  request_type: 'GET' | 'POST'
-  request_body: string
-  /** Extra headers, layered over (and overriding) the connection's own configured headers. */
-  headers: Record<string, string>
-  default_params: Record<string, unknown>
-  updated_at: string
-  updated_by: number | null
-}
-
 export type RendererType = 'none' | 'json' | 'xml' | 'delimited' | 'fixed_width'
 
 /** A column extracted via JsonPath/XPath -- renderer_config.columns for renderer_type=json/xml. */
@@ -90,40 +80,61 @@ export interface RendererField {
 }
 
 export interface Datastore {
+  /** Both the primary key and the display name -- no separate "name" field, same convention as DataConnection. */
   id: string
-  name: string
-  /** specs/datastore-streamline.md removed 'file' entirely -- it had no remaining path to a valid connection once File system connections were removed. */
-  source_type: 'query' | 'action' | 's3' | 'json'
-  /** source_type=query: a type=sql connection. source_type=s3: a type=s3 connection. source_type=json: an optional type=rest connection. Unused for source_type=action. */
+  /**
+   * 'serialized' (specs/serialized-datastore.md) supersedes the former
+   * 'action'/'s3'/'json' types (each removed): it fetches raw content via
+   * HTTP/S3/File (see access_type) and parses it with the shared
+   * renderer_type/renderer_config interface.
+   */
+  source_type: 'query' | 'serialized'
+  /** source_type=serialized only: where its raw content is fetched from. */
+  access_type: 'http' | 's3' | 'file' | ''
+  /**
+   * source_type=query: a type=sql connection. source_type=serialized: a
+   * type=http connection (access_type=http, optional) or a type=s3
+   * connection (access_type=s3, required); unused for access_type=file.
+   */
   connection: string | null
   sql_def: string | null
   inline_sql: string
   row_limit: number | null
-  /** source_type=action: the REST call to run. */
-  action: string | null
-  /** source_type=s3: object key/path within the connection's bucket. Supports ${param}. */
-  object_key: string
   /**
-   * source_type=json (specs/json_datastore.md): the JSON body text, used
-   * when connection is unset -- covers both the "hard-coded" and "passed as
-   * a parameter" body sources (the latter is just this field set to a bare
-   * ${param}). Supports ${param}.
+   * source_type=serialized + access_type=s3: object key/path within the
+   * connection's bucket, used when object_url is blank. Supports ${param}.
+   */
+  object_key: string
+  /** source_type=serialized + access_type=s3 only: a full object URL, tried instead of connection+object_key when set. Supports ${param}. */
+  object_url: string
+  /**
+   * source_type=serialized: the collapsible "Body" override used for test/
+   * troubleshooting -- when non-blank, parsed directly instead of actually
+   * fetching from access_type's configured source. Supports ${param}.
    */
   body: string
-  /** source_type=json + connection set: the endpoint to GET the JSON body from, appended to the connection's base url. Supports ${param}. */
+  /** source_type=serialized + access_type=http: the request URL, used as-is. Supports ${param}. */
   data_url: string
-  /** source_type=json: JsonPath expression selecting the row node(s) out of the parsed body. Blank resolves to "$" (the whole document). Supports ${param}. */
-  json_root_path: string
-  /** How raw action/s3 content is turned into rows/columns -- see datastore/renderers.py. */
+  /** source_type=serialized + access_type=http only. */
+  request_method: 'GET' | 'POST'
+  /** source_type=serialized + access_type=http only: key -> value query/form params. Each value supports ${param}. */
+  request_params: Record<string, string>
+  /** source_type=serialized + access_type=http only: raw request body (JSON/text/XML) for POST. Supports ${param}. */
+  request_body: string
+  /** source_type=serialized + access_type=file only: a directory on the server's own filesystem. Supports ${param}. */
+  file_path: string
+  /** source_type=serialized + access_type=file only: filename and/or regex selecting one file within file_path. Supports ${param}. */
+  file_expression: string
+  /** How raw content is turned into rows/columns -- see datastore/renderers.py. source_type=serialized only offers json/xml/delimited. */
   renderer_type: RendererType
   /**
    * renderer_type=json/xml: {root_path?, columns: RendererColumn[]}.
-   * renderer_type=delimited: {delimiter, has_header, columns?: string[]}.
+   * renderer_type=delimited: {delimiter, has_header, quote_char?, columns?: string[]}.
    * renderer_type=fixed_width: {fields: RendererField[]}.
    */
   renderer_config: Record<string, unknown>
   default_params: Record<string, unknown>
-  /** specs/api_datastore.md: public API access via the pull/push endpoints. 'push' is only valid when source_type='json'. */
+  /** specs/api_datastore.md: public API access via the pull/push endpoints. 'push' is only valid for source_type='serialized' using the JSON renderer. */
   api_mode: 'none' | 'pull' | 'push'
   refresh_mode: 'on_demand' | 'scheduled'
   cron_schedule: string
@@ -328,10 +339,10 @@ export interface PanelParameter {
  * A datastore this panel uses, per control_attributes.md's `datastores[]`.
  * scope='global' entries just reference a shared datastore.models.Datastore
  * row by id (in `name`); scope='local' entries carry that row's full field
- * set inline instead -- a one-off query/action/s3/file binding that only
- * this panel needs, still pointing at a global Connection/Action so
- * credentials stay centrally managed. Local datastores are always
- * on-demand -- no cron scheduling.
+ * set inline instead -- a one-off query/serialized binding that only this
+ * panel needs, still pointing at a global Connection so credentials stay
+ * centrally managed. Local datastores are always on-demand -- no cron
+ * scheduling.
  */
 export interface PanelDatastoreRef {
   id: string
@@ -339,15 +350,20 @@ export interface PanelDatastoreRef {
   name: string
   scope: 'global' | 'local'
   // --- scope=local only, same shape as datastore.models.Datastore ---
-  source_type?: 'query' | 'action' | 's3' | 'json'
+  source_type?: 'query' | 'serialized'
+  access_type?: 'http' | 's3' | 'file' | ''
   connection?: string
   inline_sql?: string
   row_limit?: number
-  action?: string
   object_key?: string
+  object_url?: string
   body?: string
   data_url?: string
-  json_root_path?: string
+  request_method?: 'GET' | 'POST'
+  request_params?: Record<string, string>
+  request_body?: string
+  file_path?: string
+  file_expression?: string
   renderer_type?: RendererType
   renderer_config?: Record<string, unknown>
   default_params?: Record<string, string>

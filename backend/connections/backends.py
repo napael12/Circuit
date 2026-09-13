@@ -92,65 +92,61 @@ class SqlConnectionBackend(ConnectionBackend):
             return {'ok': False, 'message': str(exc)}
 
 
-class RestConnectionBackend(ConnectionBackend):
-    """Method, auth type (auth URL/basic/form/token/none), headers, request body."""
+class HttpConnectionBackend(ConnectionBackend):
+    """Authorization for arbitrary HTTP endpoints (specs/http-connection.md).
+
+    Used by datastore.services for source_type='serialized' access_type='http'
+    requests: request_kwargs() returns headers/params/auth to merge into
+    whatever request the datastore itself is making, so this backend never
+    issues the "real" data request -- only Test does, and only to sanity-check
+    credentials against the optional Authorization URL.
+    """
 
     AUTH_NONE = 'none'
     AUTH_BASIC = 'basic'
-    AUTH_FORM = 'form'
-    AUTH_TOKEN = 'token'
-    AUTH_URL = 'auth_url'
+    AUTH_API_KEY = 'api_key'
+    AUTH_BEARER = 'bearer'
+    AUTH_DIGEST = 'digest'
 
     @property
-    def base_url(self) -> str:
+    def auth_url(self) -> str:
         return _resolved(self.conn.url) or ''
-
-    def _fetch_token(self) -> str | None:
-        """Runs the auth_url/form handshake and pulls a token out of the JSON response."""
-        auth_type = self.cfg('auth_type')
-        auth_url = self.cfg('auth_url') or (self.base_url if auth_type == self.AUTH_FORM else None)
-        if not auth_url:
-            return None
-        creds = {'username': _resolved(self.conn.username), 'password': _resolved(self.conn.password)}
-        try:
-            if auth_type == self.AUTH_URL:
-                resp = requests.post(auth_url, json=creds, timeout=self.timeout)
-            else:
-                resp = requests.post(auth_url, data=creds, timeout=self.timeout)
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get('token') or data.get('access_token') or data.get('id_token')
-        except (requests.RequestException, ValueError):
-            return None
 
     def request_kwargs(self) -> dict:
         headers = dict(self.cfg('headers') or {})
+        params = {}
         auth = None
         auth_type = self.cfg('auth_type') or self.AUTH_NONE
         if auth_type == self.AUTH_BASIC:
             auth = (_resolved(self.conn.username), _resolved(self.conn.password))
-        elif auth_type == self.AUTH_TOKEN:
+        elif auth_type == self.AUTH_API_KEY:
+            key_name = self.cfg('api_key_name') or 'X-API-Key'
+            key_value = self.cfg('api_key_value')
+            if key_value:
+                if self.cfg('api_key_location') == 'query':
+                    params[key_name] = key_value
+                else:
+                    headers[key_name] = key_value
+        elif auth_type == self.AUTH_BEARER:
             token = self.cfg('token')
             if token:
                 headers.setdefault('Authorization', f'Bearer {token}')
-        elif auth_type in (self.AUTH_URL, self.AUTH_FORM):
-            token = self._fetch_token()
-            if token:
-                headers.setdefault('Authorization', f'Bearer {token}')
-        return {'headers': headers, 'auth': auth, 'timeout': self.timeout}
+        elif auth_type == self.AUTH_DIGEST:
+            from requests.auth import HTTPDigestAuth
+
+            auth = HTTPDigestAuth(_resolved(self.conn.username), _resolved(self.conn.password))
+        return {'headers': headers, 'params': params, 'auth': auth, 'timeout': self.timeout}
 
     def test(self) -> dict:
         try:
-            auth_type = self.cfg('auth_type') or self.AUTH_NONE
-            if auth_type in (self.AUTH_URL, self.AUTH_FORM):
-                token = self._fetch_token()
-                if token:
-                    return {'ok': True, 'message': 'Authenticated successfully.'}
-                return {'ok': False, 'message': 'Authentication did not return a token.'}
-            if not self.base_url:
-                return {'ok': False, 'message': 'No URL configured.'}
-            method = (self.cfg('method') or 'GET').upper()
-            resp = requests.request(method, self.base_url, **self.request_kwargs())
+            kwargs = self.request_kwargs()
+            url = self.auth_url
+            if not url:
+                return {'ok': True, 'message': 'Configuration saved (no Authorization URL to test against).'}
+            resp = requests.get(
+                url, headers=kwargs['headers'], params=kwargs['params'] or None,
+                auth=kwargs['auth'], timeout=kwargs['timeout'],
+            )
             return {'ok': resp.ok, 'message': f'HTTP {resp.status_code}'}
         except requests.RequestException as exc:
             return {'ok': False, 'message': str(exc)}
@@ -194,11 +190,8 @@ class S3ConnectionBackend(ConnectionBackend):
 
 _BACKENDS: dict[str, type[ConnectionBackend]] = {
     'sql': SqlConnectionBackend,
-    # specs/datastore-streamline.md: File system is no longer a creatable
-    # connection type, but 'rest' stays registered -- see DataConnection's
-    # own class docstring for why RestConnectionBackend can't be removed too.
-    'rest': RestConnectionBackend,
     's3': S3ConnectionBackend,
+    'http': HttpConnectionBackend,
 }
 
 

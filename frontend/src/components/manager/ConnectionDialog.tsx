@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronRight, Cloud, Database, Globe, Network } from 'lucide-react'
+import { ChevronRight, Cloud, Database, KeyRound, Network } from 'lucide-react'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -27,21 +27,25 @@ interface Props {
   onSaved: () => void
 }
 
-// specs/datastore-streamline.md: REST endpoint and File system were removed
-// as creatable/editable connection types. 'rest' stays in ConnType (see
-// DataConnection['type']'s own doc comment) purely so this dialog still
-// type-checks/renders sensibly if it's ever handed a legacy connection whose
-// stored type is still 'rest' -- it can never be picked here.
 const TYPE_OPTIONS: { value: ConnType; label: string }[] = [
   { value: 'sql', label: 'SQL database' },
   { value: 's3', label: 'S3 bucket' },
+  { value: 'http', label: 'HTTP' },
 ]
 
 export const CONNECTION_TYPE_ICONS: Record<ConnType, typeof Database> = {
   sql: Database,
-  rest: Globe,
   s3: Cloud,
+  http: KeyRound,
 }
+
+const AUTH_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'basic', label: 'Basic (username, password)' },
+  { value: 'api_key', label: 'API Key' },
+  { value: 'bearer', label: 'Bearer Token' },
+  { value: 'digest', label: 'Digest Auth' },
+]
 
 const SQL_DRIVER_PRESETS = [
   { value: 'postgresql+psycopg2', label: 'PostgreSQL (psycopg2)' },
@@ -113,6 +117,18 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
   const [region, setRegion] = useState((initial?.config?.region as string | undefined) ?? '')
   const [bucket, setBucket] = useState((initial?.config?.bucket as string | undefined) ?? '')
 
+  // --- HTTP (specs/http-connection.md) ---
+  const [authUrl, setAuthUrl] = useState(initial?.type === 'http' ? (initial?.url ?? '') : '')
+  const [authType, setAuthType] = useState((initial?.config?.auth_type as string | undefined) ?? 'none')
+  const [apiKeyName, setApiKeyName] = useState((initial?.config?.api_key_name as string | undefined) ?? 'X-API-Key')
+  const [apiKeyValue, setApiKeyValue] = useState('')
+  const [apiKeyLocation, setApiKeyLocation] = useState((initial?.config?.api_key_location as string | undefined) ?? 'header')
+  const [token, setToken] = useState('')
+  const [digestAlgorithm, setDigestAlgorithm] = useState((initial?.config?.digest_algorithm as string | undefined) ?? 'MD5')
+  const [httpHeadersText, setHttpHeadersText] = useState(
+    initial?.type === 'http' ? toKeyValueLines(initial?.config?.headers as Record<string, unknown> | undefined) : '',
+  )
+
   // --- common advanced ---
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [maxRows, setMaxRows] = useState(initial?.max_rows != null ? String(initial.max_rows) : '')
@@ -124,7 +140,7 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null)
 
-  const needsCreds = type === 'sql'
+  const needsCreds = type === 'sql' || (type === 'http' && (authType === 'basic' || authType === 'digest'))
 
   const driverSelectValue = useMemo(
     () => (SQL_DRIVER_PRESETS.some((p) => p.value === dialect) ? dialect : CUSTOM_DRIVER),
@@ -140,6 +156,18 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
       config.secret_key = secretKey
       config.region = region
       config.bucket = bucket
+    } else if (type === 'http') {
+      config.auth_type = authType
+      if (authType === 'api_key') {
+        config.api_key_name = apiKeyName
+        config.api_key_value = apiKeyValue
+        config.api_key_location = apiKeyLocation
+      } else if (authType === 'bearer') {
+        config.token = token
+      } else if (authType === 'digest') {
+        config.digest_algorithm = digestAlgorithm
+      }
+      config.headers = parseKeyValueLines(httpHeadersText)
     }
 
     return {
@@ -151,7 +179,7 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
       port: type === 'sql' && sqlMode === 'host' && port !== '' ? Number(port) : null,
       database: type === 'sql' && sqlMode === 'host' ? database : '',
       options: type === 'sql' ? parseKeyValueLines(optionsText) : {},
-      url: type === 'sql' && sqlMode === 'url' ? sqlUrl : '',
+      url: type === 'sql' && sqlMode === 'url' ? sqlUrl : type === 'http' ? authUrl : '',
       username: needsCreds ? username : '',
       password: needsCreds ? password : '',
       config,
@@ -366,6 +394,97 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
                   <Input value={bucket} onChange={(e) => setBucket(e.target.value)} className={inputCls} />
                 </Field>
               </div>
+            </>
+          )}
+
+          {type === 'http' && (
+            <>
+              <Field label="Authorization URL" helperText="Optional -- required for Digest Auth, otherwise only used by Test connection">
+                <Input
+                  value={authUrl}
+                  onChange={(e) => setAuthUrl(e.target.value)}
+                  placeholder="https://httpbin.org/basic-auth/user/passwd"
+                  className={cn(inputCls, 'font-mono')}
+                />
+              </Field>
+
+              <Field label="Authorization type">
+                <Select value={authType} onValueChange={setAuthType}>
+                  <SelectTrigger className={selectTriggerCls}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AUTH_TYPE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              {(authType === 'basic' || authType === 'digest') && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Username">
+                    <Input value={username} onChange={(e) => setUsername(e.target.value)} className={inputCls} />
+                  </Field>
+                  <Field label="Password" helperText={isEdit ? 'Leave blank to keep the saved password' : undefined}>
+                    <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
+                  </Field>
+                </div>
+              )}
+
+              {authType === 'digest' && (
+                <Field label="Algorithm" helperText="Informational -- the actual algorithm is negotiated with the server's own challenge">
+                  <Select value={digestAlgorithm} onValueChange={setDigestAlgorithm}>
+                    <SelectTrigger className={selectTriggerCls}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MD5">MD5</SelectItem>
+                      <SelectItem value="SHA-256">SHA-256</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
+
+              {authType === 'api_key' && (
+                <div className="grid grid-cols-[1fr_1fr_130px] gap-3">
+                  <Field label="Header/param name">
+                    <Input value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} className={cn(inputCls, 'font-mono')} />
+                  </Field>
+                  <Field label="Value" helperText={isEdit ? 'Leave blank to keep the saved value' : undefined}>
+                    <Input type="password" value={apiKeyValue} onChange={(e) => setApiKeyValue(e.target.value)} className={inputCls} />
+                  </Field>
+                  <Field label="Send in">
+                    <Select value={apiKeyLocation} onValueChange={setApiKeyLocation}>
+                      <SelectTrigger className={selectTriggerCls}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="header">Header</SelectItem>
+                        <SelectItem value="query">Query param</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </div>
+              )}
+
+              {authType === 'bearer' && (
+                <Field label="Token" helperText={isEdit ? 'Leave blank to keep the saved value' : undefined}>
+                  <Input type="password" value={token} onChange={(e) => setToken(e.target.value)} className={cn(inputCls, 'font-mono')} />
+                </Field>
+              )}
+
+              <Field label="Additional headers" helperText="key=value, one per line">
+                <Textarea
+                  rows={2}
+                  value={httpHeadersText}
+                  onChange={(e) => setHttpHeadersText(e.target.value)}
+                  placeholder={'X-Custom-Header=value'}
+                  className="font-mono text-[0.85em]"
+                />
+              </Field>
             </>
           )}
 
