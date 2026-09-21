@@ -63,7 +63,7 @@ function setFieldValue(row: Record<string, unknown>, fieldPath: string, value: u
 export function groupRows(rows: DatatableRow[], columns: PanelNode[]): TreeRow[] {
   const groupCol = columns.find((c) => c.groupFunction === 'value')
   if (!groupCol || rows.length === 0) return rows
-  const path = groupCol.fieldPath || groupCol.field || ''
+  const path = groupCol.field || ''
 
   const buckets = new Map<string, DatatableRow[]>()
   const order: string[] = []
@@ -83,7 +83,7 @@ export function groupRows(rows: DatatableRow[], columns: PanelNode[]): TreeRow[]
     const grouped: TreeRow = { id: key, [GROUP_ROW_KEY]: key, subRows: bucketRows }
     setFieldValue(grouped, path, getFieldValue(bucketRows[0], path))
     for (const col of columns) {
-      const colPath = col.fieldPath || col.field || ''
+      const colPath = col.field || ''
       if (!colPath || !col.groupFunction || col.groupFunction === 'value') continue
       const nums = bucketRows.map((r) => Number(getFieldValue(r, colPath))).filter((n) => !Number.isNaN(n))
       setFieldValue(grouped, colPath, aggregate(nums, col.groupFunction))
@@ -124,7 +124,7 @@ export function diffChangedCells(prevRows: DatatableRow[], nextRows: DatatableRo
   const changed = new Set<string>()
   if (prevRows.length === 0 || nextRows.length === 0) return changed
   const prevById = new Map<string, DatatableRow>(prevRows.map((r) => [String(r.id), r]))
-  const paths = columns.filter((c) => !c.hidden).map((c) => c.fieldPath || c.field || '')
+  const paths = columns.filter((c) => !c.hidden).map((c) => c.field || '')
   for (const row of nextRows) {
     const prev = prevById.get(String(row.id))
     if (!prev) continue
@@ -149,10 +149,10 @@ function renderCellContent(value: unknown, col: PanelNode) {
   if (col.dataType === 'number') {
     if (value === null || value === undefined || value === '') return '-'
     const num = typeof value === 'number' ? value : parseFloat(String(value))
-    const formatted = formatValue(value, col.dataType, col.dataFormat)
+    const formatted = formatValue(value, col.dataType, col.dataFormat, col.humanReadable)
     return num < 0 ? <span className="text-destructive">{formatted}</span> : formatted
   }
-  return formatValue(value, col.dataType, col.dataFormat)
+  return formatValue(value, col.dataType, col.dataFormat, col.humanReadable)
 }
 
 interface BuildColumnsOptions {
@@ -201,7 +201,7 @@ function HeaderFilterContent({
     )
   }
 
-  const options = uniqueValues(rows, col.fieldPath || col.field || '')
+  const options = uniqueValues(rows, col.field || '')
   const filterValue = column.getFilterValue()
   const selected = new Set(Array.isArray(filterValue) ? (filterValue as string[]) : [])
   const toggle = (opt: string) => {
@@ -256,7 +256,7 @@ export function buildColumns<TData extends DatatableRow = DatatableRow>(
   const cols = configuredOrInferred.filter((col) => !col.hidden)
 
   return cols.map((col, index) => {
-    const path = col.fieldPath || col.field || ''
+    const path = col.field || ''
     const label = col.fieldDisplay || col.field || path
     const clickable = !!col.parameter && !!options?.onLinkedCellClick
     // 'text' -> HeaderFilterContent's free-text Input (substring match);
@@ -334,7 +334,86 @@ export function buildColumns<TData extends DatatableRow = DatatableRow>(
   })
 }
 
-export type TotalExpression = NonNullable<PanelNode['totalExpession']>
+/** Transpose mode shows at most this many source rows (as columns) -- the grid isn't virtualized. */
+export const TRANSPOSE_MAX_ROWS = 10
+
+const TRANSPOSE_COL_KEY = '__col'
+const TRANSPOSE_LABEL_KEY = '__label'
+const TRANSPOSE_SOURCE_KEY = '__sourceRows'
+
+/**
+ * Display-only transpose: one output row per visible source column, one
+ * value column (`r0..rN`) per source row, capped at TRANSPOSE_MAX_ROWS.
+ * Each output row remembers its source column def so the cell renderer keeps
+ * that column's own dataType/format/humanReadable/align.
+ */
+export function transposeRows(rows: DatatableRow[], columns: PanelNode[] | undefined): DatatableRow[] {
+  const source = rows.slice(0, TRANSPOSE_MAX_ROWS)
+  const defs: PanelNode[] = columns?.length
+    ? columns.filter((c) => !c.hidden)
+    : Object.keys(rows[0] ?? {})
+        .filter((key) => key !== 'id' && key !== 'subRows')
+        .map((field) => ({ id: field, type: 'datatable-column', field }))
+  return defs.map((col) => {
+    const path = col.field || ''
+    const out: DatatableRow = {
+      id: col.id,
+      [TRANSPOSE_LABEL_KEY]: col.fieldDisplay || col.field || path,
+      [TRANSPOSE_COL_KEY]: col,
+      [TRANSPOSE_SOURCE_KEY]: source,
+    }
+    source.forEach((row, i) => {
+      out[`r${i}`] = getFieldValue(row, path)
+    })
+    return out
+  })
+}
+
+/** Column defs for transposeRows' output: a field-name column, then one per source row headed by `headerField`'s value (or "#n"). */
+export function buildTransposedColumns<TData extends DatatableRow = DatatableRow>(
+  sourceRows: DatatableRow[],
+  headerField: string | undefined,
+  onLinkedCellClick?: (col: PanelNode, value: unknown, row: DatatableRow) => void,
+): ColumnDef<DataGridFeatures, TData>[] {
+  const source = sourceRows.slice(0, TRANSPOSE_MAX_ROWS)
+  const labelCol: ColumnDef<DataGridFeatures, TData> = {
+    id: TRANSPOSE_LABEL_KEY,
+    accessorFn: (row) => (row as Record<string, unknown>)[TRANSPOSE_LABEL_KEY],
+    header: ({ column }) => <DataGridColumnHeader column={column} title="" />,
+    enableColumnFilter: false,
+    cell: ({ getValue }) => <span className="font-medium">{String(getValue() ?? '')}</span>,
+  }
+  const valueCols = source.map((row, i): ColumnDef<DataGridFeatures, TData> => {
+    const headerValue = headerField ? getFieldValue(row, headerField) : undefined
+    const title = headerValue == null || headerValue === '' ? `#${i + 1}` : String(headerValue)
+    return {
+      id: `r${i}`,
+      accessorFn: (r) => (r as Record<string, unknown>)[`r${i}`],
+      header: ({ column }) => <DataGridColumnHeader column={column} title={title} />,
+      enableColumnFilter: false,
+      meta: i === source.length - 1 ? { autoSize: true } : undefined,
+      cell: ({ row, getValue }) => {
+        const col = (row.original as Record<string, unknown>)[TRANSPOSE_COL_KEY] as PanelNode
+        const value = getValue()
+        const content = renderCellContent(value, col)
+        if (!col.parameter || !onLinkedCellClick) return <span style={alignStyle(col.align)}>{content}</span>
+        return (
+          <button
+            type="button"
+            className="text-primary hover:underline"
+            style={alignStyle(col.align)}
+            onClick={() => onLinkedCellClick(col, value, source[i])}
+          >
+            {content}
+          </button>
+        )
+      },
+    }
+  })
+  return [labelCol, ...valueCols]
+}
+
+export type TotalExpression =NonNullable<PanelNode['totalExpession']>
 
 export function computeTotal(rows: DatatableRow[], field: string, expr: TotalExpression): number | null {
   const values = rows.map((r) => Number(getFieldValue(r, field))).filter((n) => !Number.isNaN(n))

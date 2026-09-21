@@ -10,14 +10,12 @@ import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-import { DataGrid, dataGridFeatures } from '../reui/data-grid/data-grid'
+import { dataGridFeatures } from '../reui/data-grid/data-grid'
 import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
-import { DataGridPagination } from '../reui/data-grid/data-grid-pagination'
-import { DataGridScrollArea } from '../reui/data-grid/data-grid-scroll-area'
-import { DataGridTable } from '../reui/data-grid/data-grid-table'
 import { api } from '../../api/client'
 import type { ApiKey, ApiKeyUsageRow, ApiKeyUsageSummary } from '../../api/types'
 import { downloadCsv, rowsToCsv, sanitizeFilename } from '../../utils/csv'
+import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
 
 interface Props {
   apiKey: ApiKey
@@ -180,19 +178,10 @@ function DetailsTable({ rows, loading }: { rows: ApiKeyUsageRow[]; loading: bool
     columns,
     data: rows,
     getRowId: (row) => String(row.id),
-    initialState: { pagination: { pageIndex: 0, pageSize: 25 } },
+    initialState: managerGridInitialState,
   })
 
   return (
-    <DataGrid table={table} recordCount={rows.length} isLoading={loading} tableLayout={{ dense: true }}>
-      <div className="flex min-h-0 min-w-0 flex-1">
-        <DataGridScrollArea orientation="both" className="h-full">
-          <DataGridTable />
-        </DataGridScrollArea>
-      </div>
-      <div className="flex-none border-t border-border p-1.5">
-        <DataGridPagination />
-      </div>
-    </DataGrid>
+    <ManagerGrid bare table={table} recordCount={rows.length} isLoading={loading} />
   )
 }

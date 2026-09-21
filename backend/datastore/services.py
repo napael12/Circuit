@@ -21,7 +21,7 @@ from django.utils import timezone
 from breadboard.templating import substitute_template_vars
 from connections.backends import HttpConnectionBackend, S3ConnectionBackend, get_backend
 
-from . import activity
+from . import activity, cache as result_cache
 from .engine import execute_query
 from .models import Datastore
 from .renderers import render as render_content
@@ -171,12 +171,28 @@ def _fetch_serialized(ds: Datastore, params: dict) -> list[dict]:
     return render_content(ds.renderer_type, raw, substitute_config(ds.renderer_config, params))
 
 
-def run_datastore(ds: Datastore, params: dict | None = None, row_limit: int | None = None):
+def run_datastore(ds: Datastore, params: dict | None = None, row_limit: int | None = None, use_cache: bool = True):
     """``row_limit``, when given, overrides ``ds.row_limit`` for this call only
     -- used by the manager/editor "Preview" feature to cap results without
     touching the datastore's saved configuration.
+
+    When ``ds.cache_seconds`` is set, results are cached under datastore id +
+    every input parameter (see datastore.cache). Previews (``row_limit``
+    given) and the scheduler (``use_cache=False``) always run fresh.
     """
     merged_params = {**ds.default_params, **(params or {})}
+    cacheable = use_cache and row_limit is None and bool(ds.cache_seconds) and bool(ds.pk)
+    if cacheable:
+        cached = result_cache.get(ds.pk, merged_params)
+        if not result_cache.is_miss(cached):
+            return cached
+    result = _run_uncached(ds, merged_params, row_limit)
+    if cacheable:
+        result_cache.put(ds.pk, merged_params, result, ds.cache_seconds)
+    return result
+
+
+def _run_uncached(ds: Datastore, merged_params: dict, row_limit: int | None):
     limit = ds.row_limit if row_limit is None else row_limit
 
     if ds.source_type == Datastore.SOURCE_QUERY:
@@ -213,7 +229,7 @@ def refresh_scheduled(ds_id: str) -> None:
     if activity.is_idle(ds.id, ds.idle_timeout_seconds):
         return
     try:
-        result = run_datastore(ds)
+        result = run_datastore(ds, use_cache=False)
     except Exception as exc:  # noqa: BLE001 - surface any failure on the record
         ds.last_error = str(exc)
         ds.save(update_fields=['last_error'])

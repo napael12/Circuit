@@ -9,6 +9,7 @@ from breadboard.slugs import unique_slug_id
 
 from .models import Datastore
 from .serializers import DatastoreSerializer
+from . import cache as result_cache
 from .services import run_datastore
 
 DEFAULT_PREVIEW_LIMIT = 10
@@ -56,6 +57,18 @@ class DatastoreViewSet(ModelViewSet):
             return Response({'data': ds.last_result, 'last_run_at': ds.last_run_at})
         result = run_datastore(ds, request.data)
         return Response({'data': result})
+
+    @action(detail=True, methods=['post'], url_path='clear-cache')
+    def clear_cache(self, request, pk=None):
+        """Drops every cached result of this datastore (see datastore.cache). Admin-only, like any non-safe method here."""
+        ds = self.get_object()
+        result_cache.clear(ds.id)
+        return Response({'ok': True})
+
+    def perform_update(self, serializer):
+        # A changed definition (query, params, cache term...) makes any cached result stale.
+        super().perform_update(serializer)
+        result_cache.clear(serializer.instance.id)
 
     @action(detail=True, methods=['post'])
     def preview(self, request, pk=None):
@@ -115,6 +128,7 @@ class DatastoreViewSet(ModelViewSet):
             sql_def=original.sql_def,
             inline_sql=original.inline_sql,
             row_limit=original.row_limit,
+            cache_seconds=original.cache_seconds,
             object_key=original.object_key,
             object_url=original.object_url,
             body=original.body,

@@ -5,19 +5,21 @@ interface Props {
   onReplace: () => void
   onAddOnly: () => void
   onClose: () => void
+  /** "columns" (default) or "cards" (specs/kpi.md) -- wording only, same replace-vs-add mechanism either way. */
+  itemLabel?: string
 }
 
 /** specs: "If columns already exist, prompt user to either a. replace all columns or b. only add new columns." */
-export function LoadColumnsDialog({ onReplace, onAddOnly, onClose }: Props) {
+export function LoadColumnsDialog({ onReplace, onAddOnly, onClose, itemLabel = 'columns' }: Props) {
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Load columns</DialogTitle>
+          <DialogTitle>Load {itemLabel}</DialogTitle>
         </DialogHeader>
         <p className="text-[0.85em] text-muted-foreground">
-          This control already has columns. Replace them all with columns loaded from the datastore, or only add
-          columns for fields that aren't already there?
+          This control already has {itemLabel}. Replace them all with {itemLabel} loaded from the datastore, or only
+          add {itemLabel} for fields that aren't already there?
         </p>
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
           <Button variant="outline" size="sm" onClick={onClose}>

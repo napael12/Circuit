@@ -1,0 +1,116 @@
+{
+  "id": "movie-pivot",
+  "name": "Movie Pivot",
+  "slug": "movie-pivot",
+  "category": "Datatable",
+  "subcategory": "Pivot",
+  "description": "Example of Creating a Pivot",
+  "content": {
+    "parameters": [],
+    "datastores": [
+      {
+        "id": "ds_moviepivot1",
+        "name": "movies",
+        "scope": "global"
+      },
+      {
+        "id": "ds_mth9izte1",
+        "name": "production_companies",
+        "scope": "local",
+        "source_type": "serialized",
+        "connection": "",
+        "inline_sql": "",
+        "object_key": "",
+        "file_expression": "",
+        "body": "[{\"id\": 289, \"name\": \"Ingenious Film Partners\"}, {\"id\": 306, \"name\": \"Twentieth Century Fox Film Corporation\"}, {\"id\": 444, \"name\": \"Dune Entertainment\"}, {\"id\": 574, \"name\": \"Lightstorm Entertainment\"}]",
+        "data_url": "",
+        "renderer_type": "json",
+        "renderer_config": {},
+        "default_params": {},
+        "access_type": "http"
+      }
+    ],
+    "content": [
+      {
+        "id": "root",
+        "type": "layout",
+        "direction": "horizontal",
+        "weight": 1,
+        "components": [
+          {
+            "id": "pivot_moviepivot1",
+            "type": "pivot",
+            "title": "Movie Pivot",
+            "weight": 1,
+            "datastore": "movies",
+            "rowTotals": false,
+            "columnTotals": true,
+            "columns": [
+              {
+                "id": "pivotcol_year",
+                "type": "pivot-column",
+                "field": "release_year",
+                "fieldDisplay": "Release Year",
+                "dataType": "number",
+                "sort": "asc",
+                "filterType": "selector",
+                "role": "index",
+                "subtotal": true
+              },
+              {
+                "id": "pivotcol_lang",
+                "type": "pivot-column",
+                "field": "original_language",
+                "fieldDisplay": "Original Language",
+                "dataType": "str",
+                "sort": "asc",
+                "filterType": "selector",
+                "subtotal": false,
+                "role": "column"
+              },
+              {
+                "id": "pivotcol_title",
+                "type": "pivot-column",
+                "field": "title",
+                "fieldDisplay": "Title",
+                "role": "index",
+                "dataType": "str",
+                "sort": "asc",
+                "filterType": "text"
+              },
+              {
+                "id": "pivotcol_revenue",
+                "type": "pivot-column",
+                "field": "revenue",
+                "fieldDisplay": "Revenue",
+                "role": "value",
+                "dataType": "number",
+                "dataFormat": "0,000",
+                "aggrFunction": "sum"
+              },
+              {
+                "id": "pivotcol_runtime",
+                "type": "pivot-column",
+                "field": "runtime",
+                "fieldDisplay": "Runtime",
+                "role": "value",
+                "dataType": "number",
+                "dataFormat": "0,000.0",
+                "aggrFunction": "avg"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "created_at": "2026-08-30T17:02:44.339493Z",
+  "created_by": 1,
+  "created_by_username": "admin",
+  "updated_at": "2026-09-13T22:24:37.649339Z",
+  "updated_by": 1,
+  "updated_by_username": "admin",
+  "last_accessed_at": null,
+  "last_accessed_by_username": null,
+  "allowed_roles": []
+}

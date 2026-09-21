@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, ClipboardPaste, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -106,7 +106,7 @@ export function ComponentTree({
 
   return (
     <div className="flex-1 overflow-y-auto py-1">
-      <Section label="Parameters" isOpen={open.parameters} onToggle={() => toggle('parameters')} onAdd={onAddParameter}>
+      <Section label="Parameters" isOpen={open.parameters} onToggle={() => toggle('parameters')} onAdd={onAddParameter} onPaste={onPasteParameter}>
         {parameters.map((p) => (
           <LeafRow
             key={p.name}
@@ -123,7 +123,7 @@ export function ComponentTree({
         {parameters.length === 0 && <Empty />}
       </Section>
 
-      <Section label="Datastores" isOpen={open.datastores} onToggle={() => toggle('datastores')} onAdd={onAddDatastore}>
+      <Section label="Datastores" isOpen={open.datastores} onToggle={() => toggle('datastores')} onAdd={onAddDatastore} onPaste={onPasteDatastore}>
         {datastores.map((d) => (
           <LeafRow
             key={d.id}
@@ -139,7 +139,7 @@ export function ComponentTree({
         {datastores.length === 0 && <Empty />}
       </Section>
 
-      <Section label="Links" isOpen={open.links} onToggle={() => toggle('links')} onAdd={onAddLink}>
+      <Section label="Links" isOpen={open.links} onToggle={() => toggle('links')} onAdd={onAddLink} onPaste={onPasteLink}>
         {links.map((l) => (
           <LeafRow
             key={l.id}
@@ -301,12 +301,15 @@ function Section({
   isOpen,
   onToggle,
   onAdd,
+  onPaste,
   children,
 }: {
   label: string
   isOpen: boolean
   onToggle: () => void
   onAdd?: () => void
+  /** Pastes a copied record from the clipboard -- works even when the section is empty (row context menus only exist once a row does). */
+  onPaste?: () => void
   children: ReactNode
 }) {
   return (
@@ -316,6 +319,11 @@ function Section({
           {isOpen ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
         </button>
         <span className="grow">{label}</span>
+        {onPaste && (
+          <Button variant="ghost" size="icon-xs" title="Paste" onClick={onPaste}>
+            <ClipboardPaste />
+          </Button>
+        )}
         {onAdd && (
           <Button variant="ghost" size="icon-xs" title="Add" onClick={onAdd}>
             <Plus />
@@ -416,7 +424,11 @@ function NodeRow({
   const addableTypes = childTypesFor(node.type)
   const isOpen = expanded[node.id] !== false
   const isSelected = isSameSelection(selection, { kind: 'node', id: node.id })
-  const canLoadColumns = node.type === 'datatable' || node.type === 'chart' || node.type === 'pivot'
+  const canLoadColumns = node.type === 'datatable' || node.type === 'chart' || node.type === 'pivot' || node.type === 'kpi'
+  // specs/kpi.md calls this action "Generate Cards" -- same buildColumnsFromSample mechanism as
+  // every other control's "Load Columns", just user-facing wording that matches what a kpi's
+  // children actually are.
+  const loadColumnsLabel = node.type === 'kpi' ? 'Generate Cards' : 'Load Columns'
 
   const row = (
     <div
@@ -476,10 +488,10 @@ function NodeRow({
             </ContextMenuSub>
           )}
           {canLoadColumns && (
-            <ContextMenuItem onClick={() => onLoadColumns(node.id)}>Load Columns from Datastore</ContextMenuItem>
+            <ContextMenuItem onClick={() => onLoadColumns(node.id)}>{loadColumnsLabel} from Datastore</ContextMenuItem>
           )}
           {canLoadColumns && (
-            <ContextMenuItem onClick={() => onLoadColumnsFromJson(node.id)}>Load Columns from JSON</ContextMenuItem>
+            <ContextMenuItem onClick={() => onLoadColumnsFromJson(node.id)}>{loadColumnsLabel} from JSON</ContextMenuItem>
           )}
           <ContextMenuItem onClick={() => onCopy(node.id)}>Copy</ContextMenuItem>
           <ContextMenuItem onClick={() => onPaste(node.id)}>Paste</ContextMenuItem>

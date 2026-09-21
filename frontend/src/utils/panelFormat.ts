@@ -1,7 +1,9 @@
 // Formats raw datastore row values for display per control_attributes.md's
-// datatable-column/chart-column :dataType and :dataFormat. No date/number
-// library dependency -- dataFormat patterns are small enough to hand-roll
-// (confirmed no date-fns/dayjs in package.json).
+// datatable-column/chart-column/pivot-column :dataType, :dataFormat, and
+// :humanReadable (thousands/millions/billions abbreviation -- k/m/b,
+// overriding :dataFormat's pattern for number columns when checked). No
+// date/number library dependency -- dataFormat patterns are small enough to
+// hand-roll (confirmed no date-fns/dayjs in package.json).
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
@@ -62,12 +64,21 @@ function formatNumber(value: unknown, pattern: string | undefined): string {
   }).format(num)
 }
 
+/** "Human Readable": scales by the largest of thousand/million/billion the value clears, rounded to 1 decimal (trailing ".0" drops naturally on number->string) -- 1234 -> "1.2k", 2500000000 -> "2.5b". Takes precedence over dataFormat's pattern when both are set (see formatValue). */
+function formatHumanReadable(value: unknown): string {
+  const num = typeof value === 'number' ? value : parseFloat(String(value))
+  if (Number.isNaN(num)) return value == null ? '' : String(value)
+  const abs = Math.abs(num)
+  const [divisor, suffix] = abs >= 1e9 ? [1e9, 'b'] : abs >= 1e6 ? [1e6, 'm'] : abs >= 1e3 ? [1e3, 'k'] : [1, '']
+  return `${Math.round((num / divisor) * 10) / 10}${suffix}`
+}
+
 /** dataType='badge' is rendered as a Badge component by the caller -- this only covers plain-text formatting. */
-export function formatValue(value: unknown, dataType: string | undefined, dataFormat: string | undefined): string {
+export function formatValue(value: unknown, dataType: string | undefined, dataFormat: string | undefined, humanReadable?: boolean): string {
   if (value === null || value === undefined) return ''
   switch (dataType) {
     case 'number':
-      return formatNumber(value, dataFormat)
+      return humanReadable ? formatHumanReadable(value) : formatNumber(value, dataFormat)
     case 'date':
       return formatDate(value, dataFormat, false)
     case 'datetime':

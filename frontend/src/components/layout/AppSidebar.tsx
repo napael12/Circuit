@@ -52,6 +52,7 @@ export function AppSidebar() {
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({})
   const [panels, setPanels] = useState<Panel[]>([])
   const brandName = useBrandingStore((s) => s.branding.name)
+  const brandVersion = useBrandingStore((s) => s.branding.version)
   const session = useSessionStore((s) => s.session)
   const location = useLocation()
   const [searchParams] = useSearchParams()
@@ -93,7 +94,7 @@ export function AppSidebar() {
 
   return (
     <div className="flex w-[240px] flex-none flex-col border-r border-sidebar-border bg-sidebar">
-      <div className="flex items-center gap-2 px-3 py-3">
+      <div className="flex items-center gap-2 px-3 pt-3 pb-1">
         <AppIcon className="size-5" />
         <span className="flex-1 truncate text-[0.95em] font-bold">{brandName}</span>
         <button
@@ -104,6 +105,8 @@ export function AppSidebar() {
           <ChevronLeft className="size-4" />
         </button>
       </div>
+      {/* "add 'version' feature ... display version below application title/icon" */}
+      {brandVersion && <div className="px-3 pb-2 text-[0.68em] text-muted-foreground">v{brandVersion}</div>}
 
       <nav className="flex-1 overflow-y-auto px-2 py-1">
         <NavRow icon={Home} label="Home" to="/" active={isHome} />

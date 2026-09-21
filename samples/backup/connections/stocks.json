@@ -1,0 +1,18 @@
+{
+  "id": "stocks",
+  "description": "Local Stock DB",
+  "type": "sql",
+  "dialect": "postgresql+psycopg2",
+  "host": "localhost",
+  "port": 5432,
+  "database": "example",
+  "options": {},
+  "url": "postgresql+psycopg2://postgres:password@localhost:5432/example",
+  "username": "postgres",
+  "config": {},
+  "max_rows": null,
+  "timeout_seconds": 30,
+  "created_at": "2026-08-08T18:24:21.194000Z",
+  "updated_at": "2026-08-08T21:11:13.457000Z",
+  "allowed_roles": []
+}

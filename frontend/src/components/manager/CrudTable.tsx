@@ -12,14 +12,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-import { DataGrid, DataGridContainer, dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
+import { dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
 import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
 import { SelectorColumnFilter, TextColumnFilter } from '../reui/data-grid/data-grid-header-filters'
-import { DataGridTable } from '../reui/data-grid/data-grid-table'
 import { api } from '../../api/client'
 import type { ConnectionTestResult } from '../../api/types'
 import type { FormField } from './formFields'
 import { RecordDialog } from './RecordDialog'
+import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
 
 export interface CrudColumn {
   field: string
@@ -242,6 +242,7 @@ export function CrudTable({
     columns: gridColumns,
     data: rows,
     getRowId: (row) => String(row[idField]),
+    initialState: managerGridInitialState,
   })
 
   return (
@@ -254,13 +255,7 @@ export function CrudTable({
           New
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border">
-        <DataGrid table={table} recordCount={rows.length} isLoading={loading} tableLayout={{ dense: true }}>
-          <DataGridContainer>
-            <DataGridTable />
-          </DataGridContainer>
-        </DataGrid>
-      </div>
+      <ManagerGrid table={table} recordCount={rows.length} isLoading={loading} />
       {onImportRow && (
         <input ref={importInputRef} type="file" accept="application/json" className="hidden" onChange={handleImportFile} />
       )}

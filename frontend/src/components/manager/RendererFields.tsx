@@ -16,6 +16,14 @@ const RENDERER_OPTIONS: { value: RendererType; label: string }[] = [
   { value: 'fixed_width', label: 'Fixed width' },
 ]
 
+const JSON_ORIENTS = [
+  { value: 'records', label: 'records  [{col: v}, ...]' },
+  { value: 'index', label: 'index  {idx: {col: v}}' },
+  { value: 'columns', label: 'columns  {col: {idx: v}}' },
+  { value: 'split', label: 'split  {index, columns, data}' },
+  { value: 'values', label: 'values  [[v, ...], ...]' },
+]
+
 interface Props {
   rendererType: RendererType
   config: Record<string, unknown>
@@ -70,6 +78,36 @@ export function RendererFields({ rendererType, config, onChange, compact, allowe
               className={`${h} font-mono ${textSize}`}
             />
           </Field>
+          {rendererType === 'json' && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Orient" helperText="Layout of the node at Root path, as in pandas to_json">
+                <Select
+                  value={(config.orient as string) || 'records'}
+                  onValueChange={(v) => onChange(rendererType, { ...config, orient: v })}
+                >
+                  <SelectTrigger className={`${h} w-full ${textSize}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {JSON_ORIENTS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              {['index', 'columns', 'split'].includes((config.orient as string) ?? '') && (
+                <Field label="Index column name" helperText="Column holding the row labels; blank omits it">
+                  <Input
+                    value={(config.index_name as string) ?? 'index'}
+                    onChange={(e) => onChange(rendererType, { ...config, index_name: e.target.value })}
+                    className={`${h} ${textSize}`}
+                  />
+                </Field>
+              )}
+            </div>
+          )}
           <div>
             <div className="mb-1 text-[0.78em] text-muted-foreground">
               Columns {rendererType === 'json' ? '(JsonPath per column, relative to each row)' : '(XPath per column, relative to each row)'}

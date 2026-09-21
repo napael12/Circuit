@@ -100,6 +100,8 @@ export interface Datastore {
   sql_def: string | null
   inline_sql: string
   row_limit: number | null
+  /** Result cache term in seconds, keyed by datastore + all input parameters; null/0 = no caching. Cleared via POST /datastores/{id}/clear-cache/. */
+  cache_seconds: number | null
   /**
    * source_type=serialized + access_type=s3: object key/path within the
    * connection's bucket, used when object_url is blank. Supports ${param}.
@@ -128,7 +130,7 @@ export interface Datastore {
   /** How raw content is turned into rows/columns -- see datastore/renderers.py. source_type=serialized only offers json/xml/delimited. */
   renderer_type: RendererType
   /**
-   * renderer_type=json/xml: {root_path?, columns: RendererColumn[]}.
+   * renderer_type=json/xml: {root_path?, columns: RendererColumn[]}; json also takes orient? ('records' default | 'index' | 'columns' | 'split' | 'values', as pandas to_json) and index_name? (default 'index').
    * renderer_type=delimited: {delimiter, has_header, quote_char?, columns?: string[]}.
    * renderer_type=fixed_width: {fields: RendererField[]}.
    */
@@ -237,6 +239,7 @@ export interface BrandingInfo {
   name: string
   icon: string
   favicon: string
+  version: string
 }
 
 export interface SessionInfo {
@@ -369,7 +372,20 @@ export interface PanelDatastoreRef {
   default_params?: Record<string, string>
 }
 
-export type NodeType = 'layout' | 'tab' | 'datatable' | 'chart' | 'datatable-column' | 'chart-column' | 'pivot' | 'pivot-column'
+export type NodeType =
+  | 'layout'
+  | 'tab'
+  | 'datatable'
+  | 'chart'
+  | 'datatable-column'
+  | 'chart-column'
+  | 'pivot'
+  | 'pivot-column'
+  | 'plotly-chart'
+  | 'plotly-trace'
+  | 'html'
+  | 'kpi'
+  | 'kpi-column'
 
 export interface PanelNode {
   id: string
@@ -387,9 +403,9 @@ export interface PanelNode {
   position?: 'top' | 'bottom' | 'left' | 'right'
   /** tab only -- 'basic' (a muted pill around the active tab) or 'line' (a thin underline). Undefined/unset behaves as 'basic'. */
   tabStyle?: 'basic' | 'line'
-  // --- container children: layout -> layout/tab/datatable/chart; tab -> layout/datatable/chart ---
+  // --- container children: layout -> layout/tab/datatable/chart/pivot/plotly-chart/html/kpi; tab -> layout/datatable/chart/pivot/plotly-chart/html/kpi ---
   components?: PanelNode[]
-  // --- datatable / chart ---
+  // --- datatable / chart / plotly-chart / kpi ---
   /** PanelDatastoreRef.name this control is fed by. */
   datastore?: string
   /** Rows per page; undefined/0 means no pagination (renders the whole result, capped for safety -- see DatatableControl). */
@@ -408,6 +424,10 @@ export interface PanelNode {
   cellLines?: boolean
   /** datatable only -- briefly flashes a cell's background when its value changes between data updates. Requires each row's dataset to include a unique 'id' field -- rows are diffed by that field, so rows without one (or with a non-unique/positional fallback id) can misfire on reorder/refetch. */
   signalOnUpdate?: boolean
+  /** datatable only -- display-only transpose: each column becomes a row and each (first 10) source row a column. Footer totals, tree rows, grouping, filters and Signal on Update are ignored while on. */
+  transpose?: boolean
+  /** datatable transpose only -- datastore field whose value heads each transposed column. Blank -> "#1", "#2", ... */
+  transposeHeaderField?: string
   treeRows?: boolean
   treeIdField?: string
   treeParentField?: string
@@ -417,16 +437,17 @@ export interface PanelNode {
   rowTotals?: boolean
   /** Extra "Grand Total" row: each column's aggregate across every row. */
   columnTotals?: boolean
-  /** datatable-column / chart-column / pivot-column children. */
+  /** datatable-column / chart-column / pivot-column / kpi-column / plotly-trace children. */
   columns?: PanelNode[]
-  // --- datatable-column / chart-column / pivot-column ---
+  // --- datatable-column / chart-column / pivot-column / kpi-column ---
+  /** kpi-column: the datastore field this card was generated from -- also the default `bodyValue` lookup key (optional; a card can be built from scratch with no underlying field). */
   field?: string
-  /** Dot-path into a nested row value, when different from `field`. */
-  fieldPath?: string
   fieldDisplay?: string
   dataType?: 'str' | 'number' | 'datetime' | 'date' | 'badge'
-  /** e.g. "0,000.00" for numbers; "yyyy-MM-dd" / "yyyyMMdd HH:mm" for date/datetime. */
+  /** e.g. "0,000.00" for numbers; "yyyy-MM-dd" / "yyyyMMdd HH:mm" for date/datetime. Ignored for dataType=number when humanReadable is checked. */
   dataFormat?: string
+  /** dataType=number only -- abbreviates per thousand/million/billion (1234 -> "1.2k", 2500000000 -> "2.5b"), overriding dataFormat's pattern. */
+  humanReadable?: boolean
   widthMin?: number
   widthMax?: number
   align?: 'left' | 'right' | 'middle'
@@ -466,17 +487,63 @@ export interface PanelNode {
    */
   subtotal?: boolean
   /**
-   * datatable / chart / pivot only -- ids of PanelContent.drilldowns this
-   * control's right-click menu can open (specs/drilldown.md). A control with
-   * none configured shows no drilldown items on its context menu.
+   * datatable / chart / pivot / plotly-chart / html / kpi only -- ids of
+   * PanelContent.drilldowns this control's right-click menu can open
+   * (specs/drilldown.md). A control with none configured shows no drilldown
+   * items on its context menu.
    */
   drilldownIds?: string[]
   /**
-   * datatable / chart / pivot only -- ids of PanelContent.links this
-   * control's right-click menu can open (specs/link.md). A control with none
-   * configured shows no link items on its context menu.
+   * datatable / chart / pivot / plotly-chart / html / kpi only -- ids of PanelContent.links
+   * this control's right-click menu can open (specs/link.md). A control with
+   * none configured shows no link items on its context menu.
    */
   linkIds?: string[]
+  // --- plotly-chart ---
+  /**
+   * JSON merged into Plotly's layout object and, via `traces[i]`, into each
+   * built trace object above -- lets an author customize titles, colors,
+   * axis formatting, legend position, etc. Declarative only -- JSON.parse
+   * output (plain objects/arrays/primitives), never executed as code.
+   */
+  plotlyConfig?: unknown
+  // --- plotly-trace (child of plotly-chart; its display name is `fieldDisplay`, `hidden` omits it from the plot) ---
+  /** plotly-trace: value matched against the datastore's `series` column -- only rows whose seriesField value equals it feed this trace. Blank uses the entire dataset. */
+  series?: string
+  /** plotly-trace: datastore column `series` is matched against. Blank -> 'series'. */
+  seriesField?: string
+  /** plotly-trace: datastore field paths for the x / y axes. */
+  xField?: string
+  yField?: string
+  /** plotly-trace: 'scatter' (default) | 'bar' | 'pie'. */
+  traceType?: string
+  /** plotly-trace: 'lines' | 'markers' | 'lines+markers' (scatter only). */
+  traceMode?: string
+  /** plotly-trace: datastore fields supplying per-point marker color / size / hover text. */
+  colorField?: string
+  sizeField?: string
+  textField?: string
+  /** plotly-trace: literal CSS color / pixel width of the trace's line. */
+  lineColor?: string
+  lineWidth?: number
+  /** plotly-trace: declarative JSON deep-merged into this trace's Plotly object (JSON.parse output, never executed). */
+  traceConfig?: unknown
+  // --- html ---
+  /** html only -- HTML, sanitized (DOMPurify -- strips <script> and on* handlers) after ${param} substitution, then rendered. Admin-authored (IsAdminOrReadOnly gates editing), same trust boundary as editing any other control. May contain ${param}, substituted on load and whenever that parameter's value changes. */
+  body?: string
+  // --- kpi-column ("Card") ---
+  /** kpi-column: text shown in the card header (specs/kpi.md's smaller-font slot). Either an exact key of the kpi's current row (looked up and rendered as that value) or literal text with ${param} -- see resolveExpression in KpiControl.tsx. Defaults to the source field's display name when a card is generated from a sample. */
+  headerValue?: string
+  /** kpi-column: CSS declarations ("color: gray; font-size: 12px") applied to the header, overriding its default style. Same field-or-${param} resolution as headerValue. */
+  headerStyle?: string
+  /** kpi-column: text shown in the card body (specs/kpi.md's bold/larger-font slot). Same field-or-${param} resolution as headerValue. Defaults to the source field's own name (i.e. looked up in the row) when a card is generated from a sample. */
+  bodyValue?: string
+  /** kpi-column: CSS declarations applied to the body, overriding its default style. */
+  bodyStyle?: string
+  /** kpi-column: text shown in the card footer (specs/kpi.md's smaller-font slot) -- blank (the default) omits the footer entirely rather than rendering an empty one. */
+  footerValue?: string
+  /** kpi-column: CSS declarations applied to the footer, overriding its default style. */
+  footerStyle?: string
 }
 
 /**

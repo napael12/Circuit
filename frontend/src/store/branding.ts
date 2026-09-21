@@ -4,8 +4,8 @@ import { api } from '../api/client'
 import type { BrandingInfo } from '../api/types'
 
 /**
- * specs/circuit.md: white-label branding (app name, header icon, favicon),
- * fetched once on app boot from the AllowAny /api/branding/ endpoint --
+ * specs/circuit.md: white-label branding (app name, header icon, favicon,
+ * version), fetched once on app boot from the AllowAny /api/branding/ endpoint --
  * readable pre-login, unlike the generic Settings CRUD. `branding` starts
  * pre-populated with the same defaults the backend falls back to (see
  * portal.views.BrandingView.DEFAULTS) so every header/login screen renders
@@ -18,7 +18,7 @@ interface BrandingState {
   load: () => Promise<void>
 }
 
-export const DEFAULT_BRANDING: BrandingInfo = { name: 'Circuit', icon: '/circuit.png', favicon: '/circuit.png' }
+export const DEFAULT_BRANDING: BrandingInfo = { name: 'Circuit', icon: '/circuit.png', favicon: '/circuit.png', version: '1.0.0' }
 
 export const useBrandingStore = create<BrandingState>((set) => ({
   branding: DEFAULT_BRANDING,

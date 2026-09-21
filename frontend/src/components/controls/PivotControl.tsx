@@ -37,7 +37,7 @@ function applyPivotFilters(rows: DatatableRow[], columns: PanelNode[], filters: 
   if (active.length === 0) return rows
   return rows.filter((row) =>
     active.every((col) => {
-      const path = col.fieldPath || col.field || ''
+      const path = col.field || ''
       const value = getFieldValue(row, path)
       const filterValue = filters[col.id]
       if (col.filterType === 'text') return String(value ?? '').toLowerCase().includes(String(filterValue).toLowerCase())
@@ -69,7 +69,7 @@ function FieldFilter({
   onChange: (v: FilterValue | undefined) => void
 }) {
   if (!col.filterType) return null
-  const path = col.fieldPath || col.field || ''
+  const path = col.field || ''
   const label = col.fieldDisplay || col.field || col.id
 
   return (
@@ -144,11 +144,11 @@ function SelectorFilter({
 }
 
 function groupLabel(node: PivotGroupNode, field: PivotFieldDef): string {
-  return formatValue(node.key, field.node.dataType, field.node.dataFormat)
+  return formatValue(node.key, field.node.dataType, field.node.dataFormat, field.node.humanReadable)
 }
 
 function cellText(value: number | null, field: PivotFieldDef): string {
-  return value === null ? '' : formatValue(value, field.node.dataType, field.node.dataFormat)
+  return value === null ? '' : formatValue(value, field.node.dataType, field.node.dataFormat, field.node.humanReadable)
 }
 
 /**

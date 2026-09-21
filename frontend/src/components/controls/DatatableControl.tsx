@@ -19,12 +19,14 @@ import { DatastoreStatusBadge } from './DatastoreStatusBadge'
 import {
   alignStyle,
   buildColumns,
+  buildTransposedColumns,
   buildTreeRows,
   computeTotal,
   diffChangedCells,
   GROUP_ROW_KEY,
   groupRows,
   toRows,
+  transposeRows,
   type DatatableRow,
 } from './datatableUtils'
 import type { ControlProps } from './types'
@@ -93,8 +95,16 @@ export function DatatableControl({ component, datastores, previewMode }: Control
   const title = useTitleText(component.title)
 
   const rows = useMemo(() => toRows(data), [data])
-  const changedCells = useChangedCells(rows, component.columns ?? [], !!component.signalOnUpdate)
-  const isGrouped = useMemo(() => (component.columns ?? []).some((c) => c.groupFunction === 'value'), [component.columns])
+  // Transpose is display-only (capped to TRANSPOSE_MAX_ROWS source rows) and
+  // opts out of tree rows, grouping, footer totals, filters, pagination and
+  // Signal on Update -- each of those assumes the un-transposed row shape.
+  const transpose = !!component.transpose
+  const treeMode = !transpose && !!component.treeRows
+  const changedCells = useChangedCells(rows, component.columns ?? [], !!component.signalOnUpdate && !transpose)
+  const isGrouped = useMemo(
+    () => !transpose && (component.columns ?? []).some((c) => c.groupFunction === 'value'),
+    [transpose, component.columns],
+  )
   // A column with groupFunction='value' turns `rows` into one collapsible
   // group-header row per its distinct value (each with the real, un-touched
   // matching rows nested as `subRows`), aggregating every other
@@ -109,26 +119,28 @@ export function DatatableControl({ component, datastores, previewMode }: Control
   const idField = component.treeIdField ?? 'id'
   const parentField = component.treeParentField ?? 'parentId'
   const treeRows: DatatableRow[] = useMemo(() => {
+    if (transpose) return transposeRows(rows, component.columns)
     if (isGrouped) return groupedRows
-    return component.treeRows ? buildTreeRows(rows, idField, parentField) : rows
-  }, [isGrouped, groupedRows, component.treeRows, rows, idField, parentField])
+    return treeMode ? buildTreeRows(rows, idField, parentField) : rows
+  }, [transpose, component.columns, isGrouped, groupedRows, treeMode, rows, idField, parentField])
 
   // Excludes `hidden` columns from everything the grid actually renders
   // (header/cells/footer) -- CSV export still uses component.columns as-is,
   // so a column hidden from the on-screen table is still exportable.
   const visibleColumns = useMemo(() => (component.columns ?? []).filter((c) => !c.hidden), [component.columns])
 
-  const columns = useMemo(
-    () =>
-      buildColumns(component.columns, rows, {
-        treeToggle: component.treeRows || isGrouped,
-        onLinkedCellClick: (col, value) => setParameter(col.parameter!, value == null ? '' : String(value), component.id),
-        filterEnabled: component.filter,
-        changedCells,
-      }),
+  const columns = useMemo(() => {
+    const onLinkedCellClick = (col: PanelNode, value: unknown) =>
+      setParameter(col.parameter!, value == null ? '' : String(value), component.id)
+    if (transpose) return buildTransposedColumns(rows, component.transposeHeaderField, onLinkedCellClick)
+    return buildColumns(component.columns, rows, {
+      treeToggle: treeMode || isGrouped,
+      onLinkedCellClick,
+      filterEnabled: component.filter,
+      changedCells,
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [component.columns, rows, component.treeRows, isGrouped, component.id, component.filter, changedCells],
-  )
+  }, [transpose, component.transposeHeaderField, component.columns, rows, treeMode, isGrouped, component.id, component.filter, changedCells])
 
   // A hidden column can still drive its `parameter` -- buildColumns leaves
   // it out of the rendered grid entirely (see visibleColumns above), so
@@ -141,11 +153,11 @@ export function DatatableControl({ component, datastores, previewMode }: Control
     [component.columns],
   )
   const handleRowClick =
-    hiddenLinkedColumns.length > 0
+    !transpose && hiddenLinkedColumns.length > 0
       ? (row: DatatableRow) => {
           if (GROUP_ROW_KEY in row) return // group header rows aggregate real rows -- no single value to read
           hiddenLinkedColumns.forEach((col) => {
-            const path = col.fieldPath || col.field || ''
+            const path = col.field || ''
             const value = getFieldValue(row, path)
             setParameter(col.parameter!, value == null ? '' : String(value), component.id)
           })
@@ -169,10 +181,11 @@ export function DatatableControl({ component, datastores, previewMode }: Control
     getRowId: (row, index, parent) => {
       const r = row as DatatableRow
       if (GROUP_ROW_KEY in r) return String(r[GROUP_ROW_KEY])
-      if (component.treeRows) return String(r[idField])
+      if (transpose) return String(r.id)
+      if (treeMode) return String(r[idField])
       return parent ? `${parent.id}.${index}` : String(index)
     },
-    getSubRows: component.treeRows || isGrouped ? (row) => (row as { subRows?: DatatableRow[] }).subRows : undefined,
+    getSubRows: treeMode || isGrouped ? (row) => (row as { subRows?: DatatableRow[] }).subRows : undefined,
     // TanStack defaults to flattening expanded sub rows into the paginated
     // row model, which would both mis-total the page count against the
     // top-level record count we show (recordCount prop below) and can split
@@ -188,11 +201,11 @@ export function DatatableControl({ component, datastores, previewMode }: Control
       // "unlimited": reui's DataGrid isn't virtualized, so rendering every
       // row of a large, unpaginated datastore result straight into the DOM
       // can hang the browser for several seconds.
-      pagination: { pageIndex: 0, pageSize: pageSizeOf(component.pagination) || 500 },
+      pagination: { pageIndex: 0, pageSize: (transpose ? 0 : pageSizeOf(component.pagination)) || 500 },
     },
   })
 
-  const hasTotalColumn = !!component.footer && visibleColumns.some((c) => c.totalExpession)
+  const hasTotalColumn = !transpose && !!component.footer && visibleColumns.some((c) => c.totalExpession)
   // Filtered, not raw, so totals and the pagination record count both track
   // the table's own column-filter state (table.state.columnFilters) instead
   // of the full unfiltered fetch -- flatRows so a treeRows table's totals
@@ -293,7 +306,7 @@ export function DatatableControl({ component, datastores, previewMode }: Control
               />
             </DataGridScrollArea>
           </div>
-          {pageSizeOf(component.pagination) > 0 && (
+          {!transpose && pageSizeOf(component.pagination) > 0 && (
             <div className="flex-none border-t border-border p-1.5">
               <DataGridPagination />
             </div>
@@ -308,11 +321,11 @@ function FooterRow({ columns, rows }: { columns: PanelNode[]; rows: DatatableRow
   return (
     <DataGridTableFootRow>
       {columns.map((col) => {
-        const path = col.fieldPath || col.field || ''
+        const path = col.field || ''
         const total = col.totalExpession ? computeTotal(rows, path, col.totalExpession) : null
         return (
           <DataGridTableFootRowCell key={col.id}>
-            <span style={alignStyle(col.align)}>{total !== null ? formatValue(total, col.dataType, col.dataFormat) : ''}</span>
+            <span style={alignStyle(col.align)}>{total !== null ? formatValue(total, col.dataType, col.dataFormat, col.humanReadable) : ''}</span>
           </DataGridTableFootRowCell>
         )
       })}

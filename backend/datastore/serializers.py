@@ -17,7 +17,7 @@ class DatastoreSerializer(serializers.ModelSerializer):
         model = Datastore
         fields = [
             'id', 'source_type', 'access_type', 'connection', 'sql_def', 'inline_sql',
-            'row_limit', 'object_key', 'object_url', 'body',
+            'row_limit', 'cache_seconds', 'object_key', 'object_url', 'body',
             'data_url', 'request_method', 'request_params', 'request_body',
             'file_path', 'file_expression', 'renderer_type',
             'renderer_config', 'default_params', 'api_mode', 'refresh_mode', 'cron_schedule',

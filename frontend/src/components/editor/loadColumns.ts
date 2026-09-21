@@ -23,11 +23,13 @@ export function prettifyFieldName(field: string): string {
 }
 
 /**
- * Builds datatable-column/chart-column/pivot-column nodes from a small
- * sample of datastore rows (specs: "Load Columns" -- use the datastore
+ * Builds datatable-column/chart-column/pivot-column/kpi-column nodes from a
+ * small sample of datastore rows (specs: "Load Columns" -- use the datastore
  * associated with the control to populate columns, inferring type/alignment
- * from 1-2 sample rows). Field order follows first-seen order across the
- * sample so it matches the datastore's own column order.
+ * from 1-2 sample rows; specs/kpi.md's "Generate Cards" is the same
+ * mechanism under a different label -- see EditorPage.tsx's finishLoadColumns).
+ * Field order follows first-seen order across the sample so it matches the
+ * datastore's own column order.
  *
  * pivot-column has no natural default role (index/column/value can't be
  * inferred from a sample row) -- every loaded pivot-column starts as
@@ -35,7 +37,7 @@ export function prettifyFieldName(field: string): string {
  */
 export function buildColumnsFromSample(
   rows: unknown[],
-  columnType: 'datatable-column' | 'chart-column' | 'pivot-column',
+  columnType: 'datatable-column' | 'chart-column' | 'pivot-column' | 'kpi-column',
 ): PanelNode[] {
   const fields: string[] = []
   const seen = new Set<string>()
@@ -54,15 +56,21 @@ export function buildColumnsFromSample(
       | Record<string, unknown>
       | undefined
     const dataType = inferDataType(sampleRow?.[field])
+    const fieldDisplay = prettifyFieldName(field)
     const base: PanelNode = {
       id: newId(columnType),
       type: columnType,
       field,
-      fieldDisplay: prettifyFieldName(field),
+      fieldDisplay,
       dataType,
     }
     if (columnType === 'datatable-column') return { ...base, align: alignFor(dataType) }
     if (columnType === 'pivot-column') return { ...base, role: 'value', aggrFunction: 'sum', sort: 'none' }
+    // kpi-column: specs/kpi.md's defaults -- header shows the field's label,
+    // body looks the field itself up in the kpi's current row (see
+    // KpiControl.tsx's resolveExpression: bodyValue "field" isn't literal
+    // text, it's the lookup key), footer starts empty (omitted at render).
+    if (columnType === 'kpi-column') return { ...base, headerValue: fieldDisplay, bodyValue: field, footerValue: '' }
     return base
   })
 }

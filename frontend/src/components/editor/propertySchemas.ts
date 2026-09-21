@@ -49,6 +49,8 @@ const DATATABLE: FieldSchema[] = [
   { key: 'movableColumns', label: 'Movable columns', type: 'checkbox', help: 'Adds Move left/right to each column header\'s menu' },
   { key: 'cellLines', label: 'Cell lines', type: 'checkbox' },
   { key: 'signalOnUpdate', label: 'Signal on Update', type: 'checkbox', help: "Dataset must include unique 'id' field" },
+  { key: 'transpose', label: 'Transpose', type: 'checkbox', help: 'Columns become rows and rows become columns. Display is capped to 10 rows. Footer totals, tree rows, grouping, filters and Signal on Update are not supported' },
+  { key: 'transposeHeaderField', label: 'Transpose header field', type: 'text', help: 'Transpose only -- datastore field used as each column\'s header; blank shows #1, #2, ...' },
   { key: 'treeRows', label: 'Tree rows', type: 'checkbox' },
   { key: 'treeIdField', label: 'Row id field', type: 'text', help: 'treeRows only -- defaults to "id"' },
   { key: 'treeParentField', label: 'Parent id field', type: 'text', help: 'treeRows only -- defaults to "parentId"' },
@@ -58,11 +60,11 @@ const DATATABLE: FieldSchema[] = [
 
 const DATATABLE_COLUMN: FieldSchema[] = [
   { key: 'field', label: 'Field', type: 'text' },
-  { key: 'fieldPath', label: 'Field path', type: 'text', help: 'Dot-path, if different from Field' },
   { key: 'fieldDisplay', label: 'Display name', type: 'text' },
   { key: 'hidden', label: 'Hidden', type: 'checkbox', help: 'Excludes this column from the rendered table' },
   { key: 'dataType', label: 'Data type', type: 'select', options: ['str', 'number', 'datetime', 'date', 'badge'] },
   { key: 'dataFormat', label: 'Format', type: 'text', help: '"0,000.00" for numbers; "yyyy-MM-dd" / "yyyyMMdd HH:mm" for dates' },
+  { key: 'humanReadable', label: 'Human Readable', type: 'checkbox', help: 'Data type=number only -- abbreviates as k/m/b (1234 -> 1.2k), overriding Format' },
   { key: 'widthMin', label: 'Min width', type: 'number' },
   { key: 'widthMax', label: 'Max width', type: 'number' },
   { key: 'align', label: 'Align', type: 'select', options: ['left', 'right', 'middle'] },
@@ -93,10 +95,86 @@ const CHART: FieldSchema[] = [
 
 const CHART_COLUMN: FieldSchema[] = [
   { key: 'field', label: 'Field', type: 'text' },
-  { key: 'fieldPath', label: 'Field path', type: 'text', help: 'Dot-path, if different from Field' },
   { key: 'fieldDisplay', label: 'Display name', type: 'text' },
   { key: 'dataType', label: 'Data type', type: 'select', options: ['str', 'number', 'date'] },
   { key: 'dataFormat', label: 'Format', type: 'text' },
+  { key: 'humanReadable', label: 'Human Readable', type: 'checkbox', help: 'Data type=number only -- abbreviates as k/m/b (1234 -> 1.2k), overriding Format' },
+]
+
+const PLOTLY_CHART: FieldSchema[] = [
+  ...COMMON,
+  WEIGHT,
+  DATA_BOUND,
+  {
+    key: 'plotlyConfig',
+    label: 'Style config',
+    type: 'json',
+    help: 'Declarative JSON merged into Plotly layout/traces -- { "layout": {...}, "traces": [{...}] } (no code execution)',
+  },
+  { key: 'drilldownIds', label: 'Drilldowns', type: 'multiselect', dynamicOptions: 'drilldowns', help: 'Adds each to this control\'s right-click menu' },
+  { key: 'linkIds', label: 'Links', type: 'multiselect', dynamicOptions: 'links', help: 'Adds each to this control\'s right-click menu' },
+]
+
+const PLOTLY_TRACE: FieldSchema[] = [
+  { key: 'fieldDisplay', label: 'Name', type: 'text', help: 'Legend name; blank falls back to the series/y field' },
+  { key: 'seriesField', label: 'Series field', type: 'text', help: "Datastore column holding series values; blank uses 'series'" },
+  {
+    key: 'series',
+    label: 'Series',
+    type: 'text',
+    help: 'Only rows whose Series field equals this value feed the trace. Blank uses the entire dataset',
+  },
+  { key: 'xField', label: 'X field', type: 'text', help: 'Datastore field path for the x axis' },
+  { key: 'yField', label: 'Y field', type: 'text', help: 'Datastore field path for the y axis (pie: values, with X as labels)' },
+  { key: 'traceType', label: 'Trace type', type: 'select', options: ['scatter', 'bar', 'pie'] },
+  { key: 'traceMode', label: 'Mode', type: 'select', options: ['lines', 'markers', 'lines+markers'], help: 'scatter only' },
+  { key: 'lineColor', label: 'Line color', type: 'text', help: 'CSS color, e.g. #17becf' },
+  { key: 'lineWidth', label: 'Line width', type: 'number' },
+  { key: 'colorField', label: 'Marker color field', type: 'text', help: "Datastore field giving each point's marker color" },
+  { key: 'sizeField', label: 'Marker size field', type: 'text' },
+  { key: 'textField', label: 'Hover text field', type: 'text' },
+  { key: 'hidden', label: 'Hidden', type: 'checkbox', help: 'Excludes this trace from the plot' },
+  {
+    key: 'traceConfig',
+    label: 'Trace config',
+    type: 'json',
+    help: 'Declarative JSON deep-merged into this trace, e.g. { "fill": "tozeroy", "yaxis": "y2" } (no code execution)',
+  },
+]
+
+const HTML: FieldSchema[] = [
+  ...COMMON,
+  WEIGHT,
+  {
+    key: 'body',
+    label: 'Body',
+    type: 'multiline',
+    help: 'HTML, sanitized before rendering (script tags/event handlers are stripped). Supports ${param} -- substituted on load and whenever that parameter changes',
+  },
+  { key: 'drilldownIds', label: 'Drilldowns', type: 'multiselect', dynamicOptions: 'drilldowns', help: 'Adds each to this control\'s right-click menu' },
+  { key: 'linkIds', label: 'Links', type: 'multiselect', dynamicOptions: 'links', help: 'Adds each to this control\'s right-click menu' },
+]
+
+const KPI: FieldSchema[] = [
+  ...COMMON,
+  WEIGHT,
+  DATA_BOUND,
+  { key: 'drilldownIds', label: 'Drilldowns', type: 'multiselect', dynamicOptions: 'drilldowns', help: 'Adds each to this control\'s right-click menu' },
+  { key: 'linkIds', label: 'Links', type: 'multiselect', dynamicOptions: 'links', help: 'Adds each to this control\'s right-click menu' },
+]
+
+const KPI_COLUMN: FieldSchema[] = [
+  { key: 'field', label: 'Field', type: 'text', help: 'Datastore column this card is based on -- also the default Body value lookup key' },
+  { key: 'fieldDisplay', label: 'Display name', type: 'text' },
+  { key: 'dataType', label: 'Data type', type: 'select', options: ['str', 'number', 'datetime', 'date'], help: 'Applied to the Body value' },
+  { key: 'dataFormat', label: 'Format', type: 'text', help: '"0,000.00" for numbers; "yyyy-MM-dd" / "yyyyMMdd HH:mm" for dates' },
+  { key: 'humanReadable', label: 'Human Readable', type: 'checkbox', help: 'Data type=number only -- abbreviates as k/m/b (1234 -> 1.2k), overriding Format' },
+  { key: 'headerValue', label: 'Header value', type: 'text', help: 'An exact datastore field name (looked up in the current row), or literal text with ${param}' },
+  { key: 'headerStyle', label: 'Header style', type: 'text', help: 'CSS declarations, e.g. "color: gray; font-size: 12px" -- overrides the default header style. Same field-or-${param} resolution as Header value' },
+  { key: 'bodyValue', label: 'Body value', type: 'text', help: 'An exact datastore field name (looked up in the current row), or literal text with ${param}' },
+  { key: 'bodyStyle', label: 'Body style', type: 'text', help: 'CSS declarations -- overrides the default body style' },
+  { key: 'footerValue', label: 'Footer value', type: 'text', help: 'An exact datastore field name, or literal text with ${param}. Left blank, the footer is omitted entirely' },
+  { key: 'footerStyle', label: 'Footer style', type: 'text', help: 'CSS declarations -- overrides the default footer style' },
 ]
 
 const PIVOT: FieldSchema[] = [
@@ -111,7 +189,6 @@ const PIVOT: FieldSchema[] = [
 
 const PIVOT_COLUMN: FieldSchema[] = [
   { key: 'field', label: 'Field', type: 'text' },
-  { key: 'fieldPath', label: 'Field path', type: 'text', help: 'Dot-path, if different from Field' },
   { key: 'fieldDisplay', label: 'Display name', type: 'text' },
   {
     key: 'role',
@@ -123,6 +200,7 @@ const PIVOT_COLUMN: FieldSchema[] = [
   { key: 'aggrFunction', label: 'Aggregate function', type: 'select', options: ['sum', 'avg', 'min', 'max', 'count'], help: 'role=value only' },
   { key: 'dataType', label: 'Data type', type: 'select', options: ['str', 'number', 'datetime', 'date'] },
   { key: 'dataFormat', label: 'Format', type: 'text', help: '"0,000.00" for numbers; "yyyy-MM-dd" / "yyyyMMdd HH:mm" for dates' },
+  { key: 'humanReadable', label: 'Human Readable', type: 'checkbox', help: 'Data type=number only -- abbreviates as k/m/b (1234 -> 1.2k), overriding Format' },
   { key: 'sort', label: 'Sort', type: 'select', options: ['none', 'asc', 'desc'], help: 'role=index/column only' },
   {
     key: 'subtotal',
@@ -149,6 +227,11 @@ const SCHEMAS: Record<NodeType, FieldSchema[]> = {
   'chart-column': CHART_COLUMN,
   pivot: PIVOT,
   'pivot-column': PIVOT_COLUMN,
+  'plotly-chart': PLOTLY_CHART,
+  'plotly-trace': PLOTLY_TRACE,
+  html: HTML,
+  kpi: KPI,
+  'kpi-column': KPI_COLUMN,
 }
 
 export function schemaFor(type: NodeType): FieldSchema[] {

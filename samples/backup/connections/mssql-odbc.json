@@ -1,0 +1,20 @@
+{
+  "id": "mssql-odbc",
+  "description": "MS SQL (FutonManufacturing) - ODBC/discrete fields",
+  "type": "sql",
+  "dialect": "mssql+pyodbc",
+  "host": "localhost",
+  "port": 1433,
+  "database": "FutonManufacturing",
+  "options": {
+    "driver": "ODBC Driver 17 for SQL Server"
+  },
+  "url": "",
+  "username": "sa",
+  "config": {},
+  "max_rows": null,
+  "timeout_seconds": 30,
+  "created_at": "2026-08-21T18:35:09.732641Z",
+  "updated_at": "2026-08-21T18:35:45.167010Z",
+  "allowed_roles": []
+}

@@ -13,17 +13,16 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-import { DataGrid, dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
+import { dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
 import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
 import { TextColumnFilter } from '../reui/data-grid/data-grid-header-filters'
-import { DataGridScrollArea } from '../reui/data-grid/data-grid-scroll-area'
-import { DataGridTable } from '../reui/data-grid/data-grid-table'
 import { CloneDialog } from './CloneDialog'
 import { PanelUsageDialog } from './PanelUsageDialog'
 import { api } from '../../api/client'
 import type { Panel } from '../../api/types'
 import { downloadUrl } from '../../utils/importExport'
 import { openInNewWindow } from '../../utils/newWindow'
+import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
 
 const PRIMARY_CELL_CLASS = 'text-blue-600 dark:text-blue-500 font-medium'
 
@@ -232,7 +231,7 @@ export function DashboardsPanel() {
     [navigate],
   )
 
-  const table = useTable({ features: dataGridFeatures, columns, data: rows, getRowId: (row) => row.id })
+  const table = useTable({ features: dataGridFeatures, columns, data: rows, getRowId: (row) => row.id, initialState: managerGridInitialState })
 
   return (
     <div className="flex h-full flex-col">
@@ -254,22 +253,7 @@ export function DashboardsPanel() {
           New
         </Button>
       </div>
-      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border border-border">
-        <DataGrid table={table} recordCount={rows.length} isLoading={loading} tableLayout={{ dense: true }}>
-          {/* This wrapper must itself be a flex container: DataGridScrollArea's
-              own root div has no explicit height, so it needs to be
-              *stretched* by a flex parent to get a definite height at all --
-              a plain block wrapper leaves it at height:auto, growing to the
-              content's full height instead of clipping/scrolling it. min-w-0
-              is the same fix on the width axis: a flex item's default
-              min-width is its content's intrinsic width, so a wide table
-              would otherwise force this flex chain wider than the container
-              instead of ever overflowing/scrolling within it. */}
-          <DataGridScrollArea orientation="both" className="h-full">
-            <DataGridTable />
-          </DataGridScrollArea>
-        </DataGrid>
-      </div>
+      <ManagerGrid table={table} recordCount={rows.length} isLoading={loading} />
       <input ref={importInputRef} type="file" accept="application/json" className="hidden" onChange={handleImportFile} />
       {usageTarget && <PanelUsageDialog panel={usageTarget} onClose={() => setUsageTarget(null)} />}
       {cloneTarget && (

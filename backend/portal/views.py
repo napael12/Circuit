@@ -4,8 +4,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 
-from breadboard.permissions import IsAdminOrReadOnly
+from apscheduler.triggers.cron import CronTrigger
 
+from breadboard.permissions import IsAdmin, IsAdminOrReadOnly
+
+from . import backup
 from .models import NavTree, Setting
 from .serializers import NavTreeSerializer, SettingSerializer
 
@@ -37,14 +40,14 @@ class SettingViewSet(ModelViewSet):
 
 
 class BrandingView(APIView):
-    """specs/circuit.md: white-label branding -- app name, header icon, and
-    favicon. Backed by the same global (profile='*') Settings the Manager UI
-    exposes (see the 0002_seed_branding_settings migration for the seeded
-    defaults), but readable by anyone -- including pre-login -- since the
-    login page and the browser-tab favicon both need it before a session
-    exists. Never exposes the rest of the Settings table (which can hold
-    ${VAR}-substitution secrets, see breadboard.templating), only these
-    three well-known keys.
+    """specs/circuit.md: white-label branding -- app name, header icon,
+    favicon, and version. Backed by the same global (profile='*') Settings
+    the Manager UI exposes (see the 0002_seed_branding_settings /
+    0003_seed_app_version migrations for the seeded defaults), but readable
+    by anyone -- including pre-login -- since the login page and the
+    browser-tab favicon both need it before a session exists. Never exposes
+    the rest of the Settings table (which can hold ${VAR}-substitution
+    secrets, see breadboard.templating), only these well-known keys.
     """
 
     permission_classes = [AllowAny]
@@ -53,6 +56,7 @@ class BrandingView(APIView):
         'app.name': 'Circuit',
         'app.icon': '/circuit.png',
         'app.favicon': '/circuit.png',
+        'app.version': '1.0.0',
     }
 
     def get(self, request):
@@ -62,6 +66,7 @@ class BrandingView(APIView):
                 'name': rows.get('app.name') or self.DEFAULTS['app.name'],
                 'icon': rows.get('app.icon') or self.DEFAULTS['app.icon'],
                 'favicon': rows.get('app.favicon') or self.DEFAULTS['app.favicon'],
+                'version': rows.get('app.version') or self.DEFAULTS['app.version'],
             }
         )
 
@@ -102,3 +107,30 @@ def _session_payload(request):
         'is_admin': user.is_superuser,
         'roles': list(user.roles.values_list('name', flat=True)),
     }
+
+
+class BackupView(APIView):
+    """Manager -> Backup: GET the config + last-run status, PUT {path, cron}
+    (re-syncing the schedule), POST to run a backup on demand. ADMIN only.
+    """
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        return Response(backup.get_config())
+
+    def put(self, request):
+        cron = str(request.data.get('cron', '')).strip()
+        if cron:
+            try:
+                CronTrigger.from_crontab(cron)
+            except ValueError as exc:
+                return Response({'detail': f'Invalid cron expression: {exc}'}, status=400)
+        backup.set_setting(backup.KEY_PATH, str(request.data.get('path', '')).strip())
+        backup.set_setting(backup.KEY_CRON, cron)
+        backup.sync_job()
+        return Response(backup.get_config())
+
+    def post(self, request):
+        result = backup.run_backup()
+        return Response({**result, **backup.get_config()})

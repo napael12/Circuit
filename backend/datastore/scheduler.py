@@ -59,5 +59,11 @@ def start() -> None:
         return
     for ds in Datastore.objects.filter(refresh_mode=Datastore.REFRESH_SCHEDULED).exclude(cron_schedule=''):
         sync_job(ds)
+    try:
+        from portal.backup import sync_job as sync_backup_job
+
+        sync_backup_job()
+    except Exception:  # noqa: BLE001 - a bad backup cron must not stop datastore scheduling
+        logger.exception('Could not schedule configuration backup')
     scheduler.start()
     logger.info('Datastore scheduler started')

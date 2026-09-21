@@ -81,7 +81,7 @@ export function ChartControl({ component, datastores, previewMode }: ControlProp
   const columns = component.columns ?? []
   const xColumn = columns[0]
   const yColumns = columns.slice(1)
-  const xField = xColumn?.fieldPath || xColumn?.field || Object.keys(rows[0] ?? {})[0] || 'x'
+  const xField = xColumn?.field || Object.keys(rows[0] ?? {})[0] || 'x'
   const xLabel = xColumn?.fieldDisplay || xField
   const seriesColumns: PanelNode[] = yColumns.length
     ? yColumns
@@ -91,10 +91,10 @@ export function ChartControl({ component, datastores, previewMode }: ControlProp
 
   const chartData = plottedRows.map((r) => {
     const point: Record<string, unknown> = {
-      [xField]: xColumn ? formatValue(getFieldValue(r, xField), xColumn.dataType, xColumn.dataFormat) : r[xField],
+      [xField]: xColumn ? formatValue(getFieldValue(r, xField), xColumn.dataType, xColumn.dataFormat, xColumn.humanReadable) : r[xField],
     }
     seriesColumns.forEach((col) => {
-      const path = col.fieldPath || col.field || ''
+      const path = col.field || ''
       point[path] = Number(getFieldValue(r, path)) || 0
     })
     return point
@@ -122,7 +122,7 @@ export function ChartControl({ component, datastores, previewMode }: ControlProp
               <Tooltip contentStyle={{ background: 'var(--popover)', border: '1px solid var(--border)', fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               {seriesColumns.map((col, i) => {
-                const path = col.fieldPath || col.field || ''
+                const path = col.field || ''
                 return (
                   <Line
                     key={path}
@@ -141,7 +141,7 @@ export function ChartControl({ component, datastores, previewMode }: ControlProp
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Pie
                 data={chartData}
-                dataKey={seriesColumns[0]?.fieldPath || seriesColumns[0]?.field || 'value'}
+                dataKey={seriesColumns[0]?.field || 'value'}
                 nameKey={xField}
                 outerRadius="80%"
                 label
@@ -159,7 +159,7 @@ export function ChartControl({ component, datastores, previewMode }: ControlProp
               <Tooltip contentStyle={{ background: 'var(--popover)', border: '1px solid var(--border)', fontSize: 12 }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               {seriesColumns.map((col, i) => {
-                const path = col.fieldPath || col.field || ''
+                const path = col.field || ''
                 return (
                   <Bar key={path} dataKey={path} name={col.fieldDisplay || path} fill={SERIES_COLORS[i % SERIES_COLORS.length]} />
                 )

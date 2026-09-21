@@ -1,0 +1,21 @@
+{
+  "id": "sample-http-digest",
+  "description": "httpbin.org Digest Auth demo (user/passwd, MD5)",
+  "type": "http",
+  "dialect": "",
+  "host": "",
+  "port": null,
+  "database": "",
+  "options": {},
+  "url": "https://httpbin.org/digest-auth/auth/user/passwd/MD5",
+  "username": "user",
+  "config": {
+    "auth_type": "digest",
+    "digest_algorithm": "MD5"
+  },
+  "max_rows": null,
+  "timeout_seconds": 30,
+  "created_at": "2026-09-13T16:35:14.329178Z",
+  "updated_at": "2026-09-13T16:35:14.329184Z",
+  "allowed_roles": []
+}

@@ -14,9 +14,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Field } from '@/components/Field'
 import { cn } from '@/lib/utils'
 
-import { DataGrid, DataGridContainer, dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
+import { dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
 import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
-import { DataGridTable } from '../reui/data-grid/data-grid-table'
 import { api } from '../../api/client'
 import type { DataConnection, Datastore, DatastorePreviewResult, PanelDatastoreRef, RendererType, Role } from '../../api/types'
 import { discoverAllParams } from '../../utils/sqlParams'
@@ -24,6 +23,7 @@ import { newId } from '../editor/panelTree'
 import { RoleMultiSelect } from './RoleMultiSelect'
 import { DatastorePreviewPanel } from './DatastorePreviewPanel'
 import { SerializedDataFields } from './SerializedDataFields'
+import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
 
 interface Option {
   value: string
@@ -94,6 +94,7 @@ export function DatastoreDialog({
   const [connection, setConnection] = useState(initial?.connection ?? '')
   const [inlineSql, setInlineSql] = useState(initial?.inline_sql ?? '')
   const [rowLimit, setRowLimit] = useState<number | ''>(initial?.row_limit ?? '')
+  const [cacheSeconds, setCacheSeconds] = useState<number | ''>(initial?.cache_seconds ?? '')
   const [objectKey, setObjectKey] = useState(initial?.object_key ?? '')
   const [objectUrl, setObjectUrl] = useState(initial?.object_url ?? '')
   const [body, setBody] = useState(initial?.body ?? '')
@@ -252,6 +253,7 @@ export function DatastoreDialog({
     columns: paramColumns,
     data: paramRows,
     getRowId: (row) => row.variable,
+    initialState: managerGridInitialState,
   })
 
   const buildPayload = () => ({
@@ -262,6 +264,7 @@ export function DatastoreDialog({
     sql_def: null,
     inline_sql: sourceType === 'query' ? inlineSql : '',
     row_limit: rowLimit === '' ? null : rowLimit,
+    cache_seconds: isLocal || cacheSeconds === '' ? null : cacheSeconds,
     object_key: sourceType === 'serialized' && accessType === 's3' ? objectKey : '',
     object_url: sourceType === 'serialized' && accessType === 's3' ? objectUrl : '',
     body: sourceType === 'serialized' && bodyOpen ? body : '',
@@ -507,6 +510,18 @@ export function DatastoreDialog({
             {!isLocal && (
               <>
                 <Field
+                  label="Cache (seconds)"
+                  helperText="Reuse results for this many seconds, per distinct set of input parameters. Blank or 0 = no caching. Use Clear cache in the datastore's row menu to drop it early"
+                >
+                  <Input
+                    type="number"
+                    min={0}
+                    value={cacheSeconds}
+                    onChange={(e) => setCacheSeconds(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="h-8 text-[0.85em]"
+                  />
+                </Field>
+                <Field
                   label="API mode"
                   helperText={
                     apiMode === 'push'
@@ -578,13 +593,7 @@ export function DatastoreDialog({
             {paramsOpen && (
               <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
                 {paramRows.length > 0 ? (
-                  <div className="overflow-hidden rounded-lg border border-border">
-                    <DataGrid table={paramTable} recordCount={paramRows.length} tableLayout={{ dense: true }}>
-                      <DataGridContainer>
-                        <DataGridTable />
-                      </DataGridContainer>
-                    </DataGrid>
-                  </div>
+                  <ManagerGrid className="max-h-[320px]" table={paramTable} recordCount={paramRows.length} />
                 ) : (
                   <p className="text-[0.78em] text-muted-foreground">
                     No :name or ${'{name}'} variables found in this datastore's configuration -- add one below to

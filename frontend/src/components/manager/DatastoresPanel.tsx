@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useTable, type ColumnDef } from '@tanstack/react-table'
-import { Copy, Download, MoreHorizontal, Pencil, Play, Plus, Trash2, Upload } from 'lucide-react'
+import { Copy, Download, Eraser, MoreHorizontal, Pencil, Play, Plus, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -13,15 +13,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-import { DataGrid, DataGridContainer, dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
+import { dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
 import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
 import { SelectorColumnFilter, TextColumnFilter } from '../reui/data-grid/data-grid-header-filters'
-import { DataGridTable } from '../reui/data-grid/data-grid-table'
 import { api } from '../../api/client'
 import type { DataConnection, Datastore, Role } from '../../api/types'
 import { downloadJson, readSingleItemJson } from '../../utils/importExport'
 import { CloneDialog } from './CloneDialog'
 import { DatastoreDialog } from './DatastoreDialog'
+import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
 
 const PRIMARY_CELL_CLASS = 'text-blue-600 dark:text-blue-500 font-medium'
 
@@ -206,6 +206,17 @@ export function DatastoresPanel({ connections, roles }: Props) {
                 Clone
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() =>
+                  api
+                    .post(`/datastores/${row.original.id}/clear-cache/`)
+                    .then(() => toast.success('Cache cleared.'))
+                    .catch((err) => toast.error(String(err)))
+                }
+              >
+                <Eraser />
+                Clear cache
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => downloadJson([row.original], `datastore-${row.original.id}.json`)}>
                 <Download />
                 Export JSON
@@ -223,7 +234,7 @@ export function DatastoresPanel({ connections, roles }: Props) {
     [],
   )
 
-  const table = useTable({ features: dataGridFeatures, columns, data: rows, getRowId: (row) => row.id })
+  const table = useTable({ features: dataGridFeatures, columns, data: rows, getRowId: (row) => row.id, initialState: managerGridInitialState })
 
   return (
     <div className="flex h-full flex-col">
@@ -238,13 +249,7 @@ export function DatastoresPanel({ connections, roles }: Props) {
           New
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border">
-        <DataGrid table={table} recordCount={rows.length} isLoading={loading} tableLayout={{ dense: true }}>
-          <DataGridContainer>
-            <DataGridTable />
-          </DataGridContainer>
-        </DataGrid>
-      </div>
+      <ManagerGrid table={table} recordCount={rows.length} isLoading={loading} />
       <input ref={importInputRef} type="file" accept="application/json" className="hidden" onChange={handleImportFile} />
       {editing && (
         <DatastoreDialog

@@ -25,9 +25,9 @@ export function newId(type: string): string {
   return `${type}_${Date.now().toString(36)}${counter}`
 }
 
-const COLUMN_CHILD_TYPES: NodeType[] = ['datatable', 'chart', 'pivot']
+const COLUMN_CHILD_TYPES: NodeType[] = ['datatable', 'chart', 'pivot', 'kpi', 'plotly-chart']
 
-/** layout/tab nest other nodes under `components`; datatable/chart/pivot nest their columns under `columns`. */
+/** layout/tab nest other nodes under `components`; datatable/chart/pivot/kpi/plotly-chart nest their columns (plotly-chart: its traces) under `columns`. */
 export function childrenOf(node: PanelNode): PanelNode[] {
   return COLUMN_CHILD_TYPES.includes(node.type) ? (node.columns ?? []) : (node.components ?? [])
 }
@@ -40,15 +40,19 @@ function withChildren(node: PanelNode, children: PanelNode[]): PanelNode {
 export function childTypesFor(type: NodeType): NodeType[] {
   switch (type) {
     case 'layout':
-      return ['layout', 'tab', 'datatable', 'chart', 'pivot']
+      return ['layout', 'tab', 'datatable', 'chart', 'pivot', 'plotly-chart', 'html', 'kpi']
     case 'tab':
-      return ['layout', 'datatable', 'chart', 'pivot']
+      return ['layout', 'datatable', 'chart', 'pivot', 'plotly-chart', 'html', 'kpi']
     case 'datatable':
       return ['datatable-column']
     case 'chart':
       return ['chart-column']
     case 'pivot':
       return ['pivot-column']
+    case 'kpi':
+      return ['kpi-column']
+    case 'plotly-chart':
+      return ['plotly-trace']
     default:
       return []
   }
@@ -180,6 +184,11 @@ const NODE_TYPES: NodeType[] = [
   'chart-column',
   'pivot',
   'pivot-column',
+  'plotly-chart',
+  'plotly-trace',
+  'html',
+  'kpi',
+  'kpi-column',
 ]
 
 /** Type guard for clipboard/pasted JSON -- see EditorPage.tsx's paste handler. */
@@ -256,10 +265,27 @@ export function defaultNodeFor(type: NodeType, id: string): PanelNode {
       return { id, type, title: id, weight: 1, chartType: 'bar', columns: [] }
     case 'pivot':
       return { id, type, title: id, weight: 1, columns: [] }
+    case 'plotly-chart':
+      return {
+        id,
+        type,
+        title: id,
+        weight: 1,
+        plotlyConfig: { layout: { legend: { orientation: 'h' } } },
+        columns: [],
+      }
+    case 'plotly-trace':
+      return { id, type, fieldDisplay: id, seriesField: 'series', series: '', xField: '', yField: '', traceType: 'scatter', traceMode: 'lines' }
+    case 'html':
+      return { id, type, title: id, weight: 1, body: '<p>Hello, ${param1}!</p>' }
+    case 'kpi':
+      return { id, type, title: id, weight: 1, columns: [] }
     case 'datatable-column':
     case 'chart-column':
       return { id, type, field: '', fieldDisplay: id, dataType: 'str' }
     case 'pivot-column':
       return { id, type, field: '', fieldDisplay: id, dataType: 'str', role: 'value', aggrFunction: 'sum', sort: 'none' }
+    case 'kpi-column':
+      return { id, type, field: '', fieldDisplay: id, headerValue: id, bodyValue: '', footerValue: '' }
   }
 }

@@ -1,0 +1,430 @@
+{
+  "id": "demo",
+  "name": "Historical Prices",
+  "slug": "historical-prices",
+  "category": "Datastore",
+  "subcategory": "SQL",
+  "description": "Showcase of Parameters, Datatables, Charts with SQL Datastore",
+  "content": {
+    "parameters": [
+      {
+        "name": "stock",
+        "label": "stock",
+        "dataType": "str",
+        "defaultValue": "NFLX",
+        "hidden": false,
+        "datastore": "stock-parameters",
+        "selectorColumn": "symbol"
+      }
+    ],
+    "datastores": [
+      {
+        "id": "ds1",
+        "name": "distinct-stocks",
+        "scope": "global"
+      },
+      {
+        "id": "ds_mtcbj6v93",
+        "name": "stock-selector",
+        "scope": "global"
+      },
+      {
+        "id": "ds_mths198110",
+        "name": "stock-parameters",
+        "scope": "local",
+        "source_type": "query",
+        "connection": "postgres-odbc",
+        "inline_sql": "select symbol, count(*) nr_quotes, min(date) min_date, max(date) max_date from stocks group by symbol",
+        "action": "",
+        "object_key": "",
+        "file_expression": "",
+        "body": "",
+        "data_url": "",
+        "json_root_path": "",
+        "renderer_type": "none",
+        "renderer_config": {},
+        "default_params": {}
+      },
+      {
+        "id": "ds_mtz4iad21",
+        "name": "stock-analysis",
+        "scope": "local",
+        "source_type": "query",
+        "connection": "postgres-odbc",
+        "inline_sql": "SELECT DISTINCT\n    symbol,\n    MAX(close) OVER (PARTITION BY symbol) AS max_close,\n    FIRST_VALUE(date) OVER (\n        PARTITION BY symbol ORDER BY close DESC, date ASC\n        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\n    ) AS max_close_date,\n    MIN(close) OVER (PARTITION BY symbol) AS min_close,\n    FIRST_VALUE(date) OVER (\n        PARTITION BY symbol ORDER BY close ASC, date ASC\n        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\n    ) AS min_close_date,\n    FIRST_VALUE(date) OVER (\n        PARTITION BY symbol ORDER BY date DESC\n        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\n    ) AS last_date,\n    FIRST_VALUE(close) OVER (\n        PARTITION BY symbol ORDER BY date DESC\n        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\n    ) AS last_close,\n    COUNT(*) OVER (PARTITION BY symbol) AS total_quotes\nFROM stocks\nORDER BY symbol;\n",
+        "action": "",
+        "object_key": "",
+        "file_expression": "",
+        "renderer_type": "none",
+        "renderer_config": {},
+        "default_params": {}
+      }
+    ],
+    "content": [
+      {
+        "id": "root",
+        "type": "layout",
+        "direction": "vertical",
+        "weight": 1,
+        "components": [
+          {
+            "id": "tab_mtz4l6xi13",
+            "type": "tab",
+            "title": "Analysis",
+            "weight": 1,
+            "position": "top",
+            "components": [
+              {
+                "id": "datatable_mtz4li8q14",
+                "type": "datatable",
+                "title": "Historical Prices",
+                "weight": 3,
+                "columns": [
+                  {
+                    "id": "datatable-column_mtz4li8q15",
+                    "type": "datatable-column",
+                    "field": "date",
+                    "fieldDisplay": "Date",
+                    "dataType": "datetime",
+                    "dataFormat": "yyyy-MM-dd",
+                    "widthMax": 100,
+                    "filterType": "text",
+                    "components": []
+                  },
+                  {
+                    "id": "datatable-column_mtz4li8q16",
+                    "type": "datatable-column",
+                    "field": "close",
+                    "fieldDisplay": "Close Price",
+                    "dataType": "number",
+                    "dataFormat": "0,000.00",
+                    "align": "right",
+                    "widthMax": 100,
+                    "components": []
+                  },
+                  {
+                    "id": "datatable-column_mtz4li8q17",
+                    "type": "datatable-column",
+                    "field": "open",
+                    "fieldDisplay": "Open",
+                    "dataType": "number",
+                    "align": "right",
+                    "dataFormat": "0,000.00",
+                    "components": []
+                  },
+                  {
+                    "id": "datatable-column_mtz4li8q18",
+                    "type": "datatable-column",
+                    "field": "high",
+                    "fieldDisplay": "High",
+                    "dataType": "number",
+                    "align": "right",
+                    "dataFormat": "0,000.00",
+                    "components": []
+                  },
+                  {
+                    "id": "datatable-column_mtz4li8q19",
+                    "type": "datatable-column",
+                    "field": "low",
+                    "fieldDisplay": "Low",
+                    "dataType": "number",
+                    "align": "right",
+                    "dataFormat": "0,000.00",
+                    "components": []
+                  },
+                  {
+                    "id": "datatable-column_mtz4li8q20",
+                    "type": "datatable-column",
+                    "field": "adj_close",
+                    "fieldDisplay": "Adj Close",
+                    "dataType": "number",
+                    "align": "right",
+                    "dataFormat": "0,000.00",
+                    "components": []
+                  },
+                  {
+                    "id": "datatable-column_mtz4li8q21",
+                    "type": "datatable-column",
+                    "field": "volume",
+                    "fieldDisplay": "Volume",
+                    "dataType": "number",
+                    "align": "right",
+                    "dataFormat": "0,000",
+                    "components": []
+                  }
+                ],
+                "datastore": "stock-selector",
+                "pagination": 100,
+                "filter": true,
+                "resizableColumns": false,
+                "stripedRows": true,
+                "movableColumns": true,
+                "cellLines": true,
+                "stickyHeader": true,
+                "drilldownIds": [
+                  "drilldown_mtz4ixke2"
+                ]
+              },
+              {
+                "id": "datatable_mtz4mg7v23",
+                "type": "datatable",
+                "title": "Analysis - All Stocks",
+                "weight": 3,
+                "pagination": 10,
+                "columns": [
+                  {
+                    "id": "datatable-column_mtz4mg7v24",
+                    "type": "datatable-column",
+                    "field": "symbol",
+                    "fieldDisplay": "Symbol",
+                    "dataType": "str",
+                    "align": "left",
+                    "components": []
+                  },
+                  {
+                    "id": "datatable-column_mtz4mg7v25",
+                    "type": "datatable-column",
+                    "field": "max_close",
+                    "fieldDisplay": "Max Close",
+                    "dataType": "number",
+                    "align": "right",
+                    "dataFormat": "0,000.00",
+                    "components": []
+                  },
+                  {
+                    "id": "datatable-column_mtz4mg7v26",
+                    "type": "datatable-column",
+                    "field": "max_close_date",
+                    "fieldDisplay": "Max Close Date",
+                    "dataType": "datetime",
+                    "align": "left",
+                    "dataFormat": "MM/dd/yy",
+                    "components": []
+                  },
+                  {
+                    "id": "datatable-column_mtz4mg7v27",
+                    "type": "datatable-column",
+                    "field": "min_close",
+                    "fieldDisplay": "Min Close",
+                    "dataType": "number",
+                    "align": "right",
+                    "dataFormat": "0,000.00",
+                    "components": []
+                  },
+                  {
+                    "id": "datatable-column_mtz4mg7v28",
+                    "type": "datatable-column",
+                    "field": "min_close_date",
+                    "fieldDisplay": "Min Close Date",
+                    "dataType": "datetime",
+                    "align": "left",
+                    "components": []
+                  },
+                  {
+                    "id": "datatable-column_mtz4mg7v29",
+                    "type": "datatable-column",
+                    "field": "last_date",
+                    "fieldDisplay": "Last Date",
+                    "dataType": "datetime",
+                    "align": "left",
+                    "dataFormat": "yyyy-MM-dd",
+                    "components": []
+                  },
+                  {
+                    "id": "datatable-column_mtz4mg7v30",
+                    "type": "datatable-column",
+                    "field": "last_close",
+                    "fieldDisplay": "Last Close",
+                    "dataType": "number",
+                    "align": "right",
+                    "dataFormat": "0,000.00",
+                    "components": []
+                  },
+                  {
+                    "id": "datatable-column_mtz4mg7v31",
+                    "type": "datatable-column",
+                    "field": "total_quotes",
+                    "fieldDisplay": "Total Quotes",
+                    "dataType": "number",
+                    "align": "right",
+                    "components": []
+                  }
+                ],
+                "datastore": "stock-analysis",
+                "cellLines": true
+              }
+            ]
+          },
+          {
+            "id": "chart_mthxzlgj19",
+            "type": "chart",
+            "title": "Historical Prices - ${stock}",
+            "weight": 2,
+            "chartType": "line",
+            "columns": [
+              {
+                "id": "chart-column_mthxzlgj20",
+                "type": "chart-column",
+                "field": "date",
+                "fieldDisplay": "Date",
+                "dataType": "date",
+                "components": []
+              },
+              {
+                "id": "chart-column_mthxzlgj21",
+                "type": "chart-column",
+                "field": "open",
+                "fieldDisplay": "Open",
+                "dataType": "number",
+                "components": []
+              },
+              {
+                "id": "chart-column_mthxzlgj22",
+                "type": "chart-column",
+                "field": "high",
+                "fieldDisplay": "High",
+                "dataType": "number",
+                "components": []
+              },
+              {
+                "id": "chart-column_mthxzlgj23",
+                "type": "chart-column",
+                "field": "low",
+                "fieldDisplay": "Low",
+                "dataType": "number",
+                "components": []
+              },
+              {
+                "id": "chart-column_mthxzlgj24",
+                "type": "chart-column",
+                "field": "close",
+                "fieldDisplay": "Close",
+                "dataType": "number",
+                "components": []
+              }
+            ],
+            "datastore": "stock-selector"
+          }
+        ],
+        "resizable": true,
+        "collapsible": true
+      }
+    ],
+    "drilldowns": [
+      {
+        "id": "drilldown_mtz4ixke2",
+        "name": "Stock Analysis Drilldown",
+        "root": {
+          "id": "layout_mtz4ixke3",
+          "type": "layout",
+          "direction": "horizontal",
+          "weight": 1,
+          "components": [
+            {
+              "id": "datatable_mtz4j3od4",
+              "type": "datatable",
+              "title": "Analysis",
+              "weight": 3,
+              "pagination": 10,
+              "columns": [
+                {
+                  "id": "datatable-column_mtz4j3od5",
+                  "type": "datatable-column",
+                  "field": "symbol",
+                  "fieldDisplay": "Symbol",
+                  "dataType": "str",
+                  "align": "left",
+                  "components": []
+                },
+                {
+                  "id": "datatable-column_mtz4j3od6",
+                  "type": "datatable-column",
+                  "field": "max_close",
+                  "fieldDisplay": "Max Close",
+                  "dataType": "number",
+                  "align": "right",
+                  "dataFormat": "0,000.00",
+                  "components": []
+                },
+                {
+                  "id": "datatable-column_mtz4j3od7",
+                  "type": "datatable-column",
+                  "field": "max_close_date",
+                  "fieldDisplay": "Max Close Date",
+                  "dataType": "datetime",
+                  "align": "left",
+                  "dataFormat": "MM/dd/yy",
+                  "components": []
+                },
+                {
+                  "id": "datatable-column_mtz4j3od8",
+                  "type": "datatable-column",
+                  "field": "min_close",
+                  "fieldDisplay": "Min Close",
+                  "dataType": "number",
+                  "align": "right",
+                  "dataFormat": "0,000.00",
+                  "components": []
+                },
+                {
+                  "id": "datatable-column_mtz4j3od9",
+                  "type": "datatable-column",
+                  "field": "min_close_date",
+                  "fieldDisplay": "Min Close Date",
+                  "dataType": "datetime",
+                  "align": "left",
+                  "components": []
+                },
+                {
+                  "id": "datatable-column_mtz4j3od10",
+                  "type": "datatable-column",
+                  "field": "last_date",
+                  "fieldDisplay": "Last Date",
+                  "dataType": "datetime",
+                  "align": "left",
+                  "dataFormat": "yyyy-MM-dd",
+                  "components": []
+                },
+                {
+                  "id": "datatable-column_mtz4j3od11",
+                  "type": "datatable-column",
+                  "field": "last_close",
+                  "fieldDisplay": "Last Close",
+                  "dataType": "number",
+                  "align": "right",
+                  "dataFormat": "0,000.00",
+                  "components": []
+                },
+                {
+                  "id": "datatable-column_mtz4j3od12",
+                  "type": "datatable-column",
+                  "field": "total_quotes",
+                  "fieldDisplay": "Total Quotes",
+                  "dataType": "number",
+                  "align": "right",
+                  "components": []
+                }
+              ],
+              "datastore": "stock-analysis",
+              "cellLines": true
+            }
+          ],
+          "displayTitle": false,
+          "title": "Drilldown"
+        }
+      }
+    ]
+  },
+  "created_at": "2026-08-08T16:51:15.029000Z",
+  "created_by": 1,
+  "created_by_username": "admin",
+  "updated_at": "2026-09-13T22:15:45.200667Z",
+  "updated_by": 1,
+  "updated_by_username": "admin",
+  "last_accessed_at": null,
+  "last_accessed_by_username": null,
+  "allowed_roles": [
+    12,
+    9
+  ]
+}

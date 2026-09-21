@@ -1,0 +1,21 @@
+{
+  "id": "sample-s3",
+  "description": "NOAA GOES-16 public Open Data bucket, anonymous access",
+  "type": "s3",
+  "dialect": "",
+  "host": "",
+  "port": null,
+  "database": "",
+  "options": {},
+  "url": "",
+  "username": "",
+  "config": {
+    "region": "us-east-1",
+    "bucket": "noaa-goes16"
+  },
+  "max_rows": null,
+  "timeout_seconds": 30,
+  "created_at": "2026-08-16T19:16:18.141462Z",
+  "updated_at": "2026-08-16T19:16:18.141468Z",
+  "allowed_roles": []
+}

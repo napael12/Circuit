@@ -1,0 +1,504 @@
+{
+  "id": "panel-mtdftfrvd84f7e",
+  "name": "Movie Titles",
+  "slug": "movie-info",
+  "category": "Datastore",
+  "subcategory": "JSON",
+  "description": "Example of dashboard loading JSON from SQL Datastore",
+  "content": {
+    "parameters": [
+      {
+        "name": "crew",
+        "label": "Crew",
+        "dataType": "str",
+        "hidden": true,
+        "defaultValue": ""
+      },
+      {
+        "name": "id",
+        "label": "id",
+        "dataType": "str",
+        "hidden": true
+      },
+      {
+        "name": "cast",
+        "label": "cast",
+        "dataType": "str",
+        "hidden": true
+      },
+      {
+        "name": "countries",
+        "label": "countries",
+        "dataType": "str",
+        "hidden": true
+      },
+      {
+        "name": "companies",
+        "label": "companies",
+        "dataType": "str",
+        "hidden": true,
+        "defaultValue": "[{\"id\": 289, \"name\": \"Ingenious Film Partners\"}, {\"id\": 306, \"name\": \"Twentieth Century Fox Film Corporation\"}, {\"id\": 444, \"name\": \"Dune Entertainment\"}, {\"id\": 574, \"name\": \"Lightstorm Entertainment\"}]"
+      }
+    ],
+    "datastores": [
+      {
+        "id": "ds_mtdftmch1",
+        "name": "movies",
+        "scope": "global"
+      },
+      {
+        "id": "ds_mthc91hs1",
+        "name": "crew-data",
+        "scope": "local",
+        "source_type": "serialized",
+        "access_type": "http",
+        "connection": "",
+        "inline_sql": "",
+        "object_key": "",
+        "object_url": "",
+        "body": "${crew}",
+        "data_url": "",
+        "request_method": "GET",
+        "request_params": {},
+        "request_body": "",
+        "file_path": "",
+        "file_expression": "",
+        "renderer_type": "json",
+        "renderer_config": {},
+        "default_params": {}
+      },
+      {
+        "id": "ds_mthewok21",
+        "name": "cast-data",
+        "scope": "local",
+        "source_type": "serialized",
+        "access_type": "http",
+        "connection": "",
+        "inline_sql": "",
+        "object_key": "",
+        "object_url": "",
+        "body": "${cast}",
+        "data_url": "",
+        "request_method": "GET",
+        "request_params": {},
+        "request_body": "",
+        "file_path": "",
+        "file_expression": "",
+        "renderer_type": "json",
+        "renderer_config": {},
+        "default_params": {}
+      },
+      {
+        "id": "ds_mthexbu02",
+        "name": "companies-data",
+        "scope": "local",
+        "source_type": "serialized",
+        "access_type": "http",
+        "connection": "",
+        "inline_sql": "",
+        "object_key": "",
+        "object_url": "",
+        "body": "${companies}",
+        "data_url": "",
+        "request_method": "GET",
+        "request_params": {},
+        "request_body": "",
+        "file_path": "",
+        "file_expression": "",
+        "renderer_type": "json",
+        "renderer_config": {},
+        "default_params": {}
+      },
+      {
+        "id": "ds_mthexy903",
+        "name": "countries-data",
+        "scope": "local",
+        "source_type": "serialized",
+        "access_type": "http",
+        "connection": "",
+        "inline_sql": "",
+        "object_key": "",
+        "object_url": "",
+        "body": "${countries}",
+        "data_url": "",
+        "request_method": "GET",
+        "request_params": {},
+        "request_body": "",
+        "file_path": "",
+        "file_expression": "",
+        "renderer_type": "json",
+        "renderer_config": {},
+        "default_params": {}
+      }
+    ],
+    "content": [
+      {
+        "id": "root",
+        "type": "layout",
+        "direction": "horizontal",
+        "weight": 1,
+        "components": [
+          {
+            "id": "layout_mtdftu4g2",
+            "type": "layout",
+            "direction": "vertical",
+            "weight": 1,
+            "components": [
+              {
+                "id": "datatable_mtdfufzv4",
+                "type": "datatable",
+                "title": "Movies",
+                "weight": 1,
+                "pagination": 100,
+                "columns": [
+                  {
+                    "id": "datatable-column_mtdfvxtf5",
+                    "type": "datatable-column",
+                    "field": "id",
+                    "fieldDisplay": "Id",
+                    "dataType": "number",
+                    "align": "right",
+                    "pinnable": true
+                  },
+                  {
+                    "id": "datatable-column_mtdfvxtf6",
+                    "type": "datatable-column",
+                    "field": "title",
+                    "fieldDisplay": "Title",
+                    "dataType": "str",
+                    "align": "left",
+                    "pinnable": true,
+                    "filterType": "text"
+                  },
+                  {
+                    "id": "datatable-column_mtdfvxtf7",
+                    "type": "datatable-column",
+                    "field": "tagline",
+                    "fieldDisplay": "Tagline",
+                    "dataType": "str",
+                    "align": "left",
+                    "filterType": "text"
+                  },
+                  {
+                    "id": "datatable-column_mtdfvxtf8",
+                    "type": "datatable-column",
+                    "field": "original_language",
+                    "fieldDisplay": "Original Language",
+                    "dataType": "str",
+                    "align": "left",
+                    "filterType": "selector"
+                  },
+                  {
+                    "id": "datatable-column_mtdfvxtf9",
+                    "type": "datatable-column",
+                    "field": "popularity",
+                    "fieldDisplay": "Popularity",
+                    "dataType": "number",
+                    "align": "right"
+                  },
+                  {
+                    "id": "datatable-column_mtdfvxtf10",
+                    "type": "datatable-column",
+                    "field": "release_date",
+                    "fieldDisplay": "Release Date",
+                    "dataType": "datetime",
+                    "align": "left",
+                    "dataFormat": "yyyy-MM-dd"
+                  },
+                  {
+                    "id": "datatable-column_mtdfvxtf11",
+                    "type": "datatable-column",
+                    "field": "revenue",
+                    "fieldDisplay": "Revenue",
+                    "dataType": "number",
+                    "align": "right",
+                    "dataFormat": "0,000",
+                    "totalExpession": "sum"
+                  },
+                  {
+                    "id": "datatable-column_mtdfvxtf12",
+                    "type": "datatable-column",
+                    "field": "runtime",
+                    "fieldDisplay": "Runtime",
+                    "dataType": "number",
+                    "align": "right"
+                  },
+                  {
+                    "id": "datatable-column_mtdfvxtf13",
+                    "type": "datatable-column",
+                    "field": "vote_average",
+                    "fieldDisplay": "Vote Average",
+                    "dataType": "number",
+                    "align": "right",
+                    "hidden": false
+                  },
+                  {
+                    "id": "datatable-column_mtdfvxtf14",
+                    "type": "datatable-column",
+                    "field": "vote_count",
+                    "fieldDisplay": "Vote Count",
+                    "dataType": "number",
+                    "align": "right",
+                    "totalExpession": "sum",
+                    "dataFormat": "0,000",
+                    "hidden": false
+                  },
+                  {
+                    "id": "datatable-column_mth9m94a17",
+                    "type": "datatable-column",
+                    "field": "genres",
+                    "fieldDisplay": "Genres",
+                    "dataType": "str",
+                    "align": "left",
+                    "hidden": true
+                  },
+                  {
+                    "id": "datatable-column_mth9m94a18",
+                    "type": "datatable-column",
+                    "field": "production_companies",
+                    "fieldDisplay": "Production Companies",
+                    "dataType": "str",
+                    "align": "left",
+                    "hidden": true,
+                    "parameter": "companies"
+                  },
+                  {
+                    "id": "datatable-column_mth9m94a19",
+                    "type": "datatable-column",
+                    "field": "production_countries",
+                    "fieldDisplay": "Production Countries",
+                    "dataType": "str",
+                    "align": "left",
+                    "hidden": true,
+                    "parameter": "countries"
+                  },
+                  {
+                    "id": "datatable-column_mth9m94a20",
+                    "type": "datatable-column",
+                    "field": "cast",
+                    "fieldDisplay": "Cast",
+                    "dataType": "str",
+                    "align": "left",
+                    "hidden": true,
+                    "parameter": "cast"
+                  },
+                  {
+                    "id": "datatable-column_mth9m94a21",
+                    "type": "datatable-column",
+                    "field": "crew",
+                    "fieldDisplay": "Crew",
+                    "dataType": "str",
+                    "align": "left",
+                    "parameter": "crew",
+                    "hidden": true
+                  },
+                  {
+                    "id": "datatable-column_mth9m94a22",
+                    "type": "datatable-column",
+                    "field": "release_year",
+                    "fieldDisplay": "Release Year",
+                    "dataType": "number",
+                    "align": "right"
+                  }
+                ],
+                "datastore": "movies",
+                "filter": true,
+                "footer": true,
+                "cellLines": true,
+                "stickyHeader": true,
+                "resizableColumns": false,
+                "stripedRows": true,
+                "drilldownIds": [
+                  "drilldown_mtxgur5m1"
+                ],
+                "linkIds": [
+                  "link_mtxgwzqu6"
+                ]
+              },
+              {
+                "id": "layout_mtf7kxjl1",
+                "type": "layout",
+                "direction": "vertical",
+                "weight": 1,
+                "components": [
+                  {
+                    "id": "tab_mtf7l0qi2",
+                    "type": "tab",
+                    "title": "Companies",
+                    "weight": 1,
+                    "position": "top",
+                    "components": [
+                      {
+                        "id": "datatable_mtheyhps4",
+                        "type": "datatable",
+                        "title": "Cast",
+                        "weight": 1,
+                        "pagination": 10,
+                        "columns": [
+                          {
+                            "id": "datatable-column_mthf9nze1",
+                            "type": "datatable-column",
+                            "field": "name",
+                            "fieldDisplay": "Name",
+                            "dataType": "str",
+                            "align": "left",
+                            "components": []
+                          },
+                          {
+                            "id": "datatable-column_mthf9vb42",
+                            "type": "datatable-column",
+                            "field": "character",
+                            "fieldDisplay": "Character",
+                            "dataType": "str",
+                            "align": "left",
+                            "components": []
+                          }
+                        ],
+                        "datastore": "cast-data"
+                      },
+                      {
+                        "id": "datatable_mthcey2o2",
+                        "type": "datatable",
+                        "title": "Crew",
+                        "weight": 1,
+                        "pagination": 10,
+                        "columns": [
+                          {
+                            "id": "datatable-column_mthcf7633",
+                            "type": "datatable-column",
+                            "field": "id",
+                            "fieldDisplay": "Id",
+                            "dataType": "number",
+                            "align": "right",
+                            "hidden": true,
+                            "parameter": "id"
+                          },
+                          {
+                            "id": "datatable-column_mthcf7644",
+                            "type": "datatable-column",
+                            "field": "job",
+                            "fieldDisplay": "Job",
+                            "dataType": "str",
+                            "align": "left"
+                          },
+                          {
+                            "id": "datatable-column_mthcf7645",
+                            "type": "datatable-column",
+                            "field": "name",
+                            "fieldDisplay": "Name",
+                            "dataType": "str",
+                            "align": "left"
+                          },
+                          {
+                            "id": "datatable-column_mthcf7648",
+                            "type": "datatable-column",
+                            "field": "department",
+                            "fieldDisplay": "Department",
+                            "dataType": "str",
+                            "align": "left"
+                          },
+                          {
+                            "id": "datatable-column_mthcf7647",
+                            "type": "datatable-column",
+                            "field": "credit_id",
+                            "fieldDisplay": "Credit Id",
+                            "dataType": "str",
+                            "align": "left"
+                          }
+                        ],
+                        "datastore": "crew-data"
+                      },
+                      {
+                        "id": "datatable_mthez5fk5",
+                        "type": "datatable",
+                        "title": "Companies",
+                        "weight": 1,
+                        "pagination": 10,
+                        "columns": [],
+                        "datastore": "companies-data"
+                      },
+                      {
+                        "id": "datatable_mthezoie6",
+                        "type": "datatable",
+                        "title": "Countries",
+                        "weight": 1,
+                        "pagination": 10,
+                        "columns": [],
+                        "datastore": "countries-data"
+                      }
+                    ],
+                    "tabStyle": "line"
+                  }
+                ],
+                "title": "Details",
+                "displayTitle": false
+              }
+            ],
+            "title": "Movies"
+          }
+        ]
+      }
+    ],
+    "drilldowns": [
+      {
+        "id": "drilldown_mtxgur5m1",
+        "name": "Cast",
+        "root": {
+          "id": "layout_mtxgur5m2",
+          "type": "layout",
+          "direction": "horizontal",
+          "weight": 1,
+          "components": [
+            {
+              "id": "datatable_mtxgvbb93",
+              "type": "datatable",
+              "title": "Cast",
+              "weight": 1,
+              "pagination": 10,
+              "columns": [
+                {
+                  "id": "datatable-column_mtxgvbb94",
+                  "type": "datatable-column",
+                  "field": "name",
+                  "fieldDisplay": "Name",
+                  "dataType": "str",
+                  "align": "left",
+                  "components": []
+                },
+                {
+                  "id": "datatable-column_mtxgvbb95",
+                  "type": "datatable-column",
+                  "field": "character",
+                  "fieldDisplay": "Character",
+                  "dataType": "str",
+                  "align": "left",
+                  "components": []
+                }
+              ],
+              "datastore": "cast-data"
+            }
+          ],
+          "displayTitle": false,
+          "title": "cast-drilldown"
+        }
+      }
+    ],
+    "links": [
+      {
+        "id": "link_mtxgwzqu6",
+        "name": "Movie Pivot",
+        "url": "/panel/movie-pivot",
+        "target": "tab"
+      }
+    ]
+  },
+  "created_at": "2026-08-28T21:03:54.352874Z",
+  "created_by": 1,
+  "created_by_username": "admin",
+  "updated_at": "2026-09-13T22:28:50.666015Z",
+  "updated_by": 1,
+  "updated_by_username": "admin",
+  "last_accessed_at": null,
+  "last_accessed_by_username": null,
+  "allowed_roles": []
+}

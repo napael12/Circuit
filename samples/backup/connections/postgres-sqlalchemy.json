@@ -1,0 +1,18 @@
+{
+  "id": "postgres-sqlalchemy",
+  "description": "Postgres (example) - SQLAlchemy URL override",
+  "type": "sql",
+  "dialect": "",
+  "host": "",
+  "port": null,
+  "database": "",
+  "options": {},
+  "url": "postgresql+psycopg2://postgres:password@localhost:5432/example",
+  "username": "",
+  "config": {},
+  "max_rows": null,
+  "timeout_seconds": 30,
+  "created_at": "2026-08-21T18:35:09.872185Z",
+  "updated_at": "2026-08-21T18:35:45.384458Z",
+  "allowed_roles": []
+}

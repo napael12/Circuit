@@ -1,0 +1,112 @@
+{
+  "id": "panel-muab4l0f1k8wmf",
+  "name": "Plotly Examples",
+  "slug": "plotly-examples",
+  "category": "",
+  "subcategory": "",
+  "description": "",
+  "content": {
+    "parameters": [],
+    "datastores": [
+      {
+        "id": "ds_muab83u71",
+        "name": "samples",
+        "scope": "local",
+        "source_type": "serialized",
+        "access_type": "http",
+        "inline_sql": "",
+        "object_key": "",
+        "object_url": "",
+        "body": "[\n\t{\"series\":\"trace1\",\"x\":1,\"y\":10}, {\"series\":\"trace1\", \"x\":2,\"y\":15}, {\"series\":\"trace1\", \"x\":3,\"y\":11}, {\"series\":\"trace1\", \"x\":4,\"y\":15},\n\t{\"series\":\"trace2\",\"x\":2,\"y\":16}, {\"series\":\"trace2\", \"x\":3,\"y\":15}, {\"series\":\"trace2\", \"x\":4,\"y\":13}, {\"series\":\"trace2\", \"x\":5,\"y\":17},\n    {\"series\":\"trace3\",\"x\":1,\"y\":12}, {\"series\":\"trace3\", \"x\":2,\"y\":19}, {\"series\":\"trace3\", \"x\":3,\"y\":15}, {\"series\":\"trace3\", \"x\":4,\"y\":12}\n\n]",
+        "data_url": "",
+        "request_method": "GET",
+        "request_params": {},
+        "request_body": "",
+        "file_path": "",
+        "file_expression": "",
+        "renderer_type": "json",
+        "renderer_config": {},
+        "default_params": {}
+      }
+    ],
+    "content": [
+      {
+        "id": "root",
+        "type": "layout",
+        "direction": "horizontal",
+        "weight": 1,
+        "components": [
+          {
+            "id": "plotly-chart_muab88i62",
+            "type": "plotly-chart",
+            "title": "line chart",
+            "weight": 1,
+            "plotlyTraces": [],
+            "plotlyConfig": {
+              "layout": {
+                "title": {
+                  "text": "Sample Plotly"
+                },
+                "legend": {
+                  "orientation": "h"
+                }
+              }
+            },
+            "datastore": "samples",
+            "columns": [
+              {
+                "id": "plotly-trace_muad3h3v1",
+                "type": "plotly-trace",
+                "fieldDisplay": "trace1",
+                "series": "trace1",
+                "xField": "x",
+                "yField": "y",
+                "traceType": "scatter",
+                "traceMode": "lines",
+                "lineColor": "",
+                "seriesField": "series"
+              },
+              {
+                "id": "plotly-trace_muad3jfy2",
+                "type": "plotly-trace",
+                "fieldDisplay": "trace2",
+                "series": "trace2",
+                "xField": "x",
+                "yField": "y",
+                "traceMode": "markers",
+                "traceType": "scatter",
+                "seriesField": "series"
+              },
+              {
+                "id": "plotly-trace_muadajd31",
+                "type": "plotly-trace",
+                "fieldDisplay": "trace3",
+                "series": "trace3",
+                "xField": "x",
+                "yField": "y",
+                "traceType": "scatter",
+                "traceMode": "lines",
+                "seriesField": "series",
+                "sizeField": "",
+                "traceConfig": {},
+                "hidden": false
+              }
+            ]
+          }
+        ],
+        "title": "plotly-line"
+      }
+    ],
+    "drilldowns": [],
+    "links": []
+  },
+  "created_at": "2026-09-20T21:10:44.382456Z",
+  "created_by": 1,
+  "created_by_username": "admin",
+  "updated_at": "2026-09-20T22:30:25.595459Z",
+  "updated_by": 1,
+  "updated_by_username": "admin",
+  "last_accessed_at": null,
+  "last_accessed_by_username": null,
+  "allowed_roles": []
+}

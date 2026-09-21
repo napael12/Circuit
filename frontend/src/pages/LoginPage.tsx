@@ -13,6 +13,7 @@ import { useSessionStore } from '../store/session'
 export function LoginPage() {
   const login = useSessionStore((s) => s.login)
   const appName = useBrandingStore((s) => s.branding.name)
+  const appVersion = useBrandingStore((s) => s.branding.version)
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -32,10 +33,11 @@ export function LoginPage() {
   return (
     <div className="flex h-screen items-center justify-center">
       <form onSubmit={handleSubmit} className="w-80 rounded-xl border border-border bg-card p-8">
-        <div className="mb-4 flex items-center gap-2 text-[1.4em] font-bold">
+        <div className="mb-1 flex items-center gap-2 text-[1.4em] font-bold">
           <AppIcon className="size-6" />
           {appName}
         </div>
+        {appVersion && <div className="mb-4 pl-8 text-[0.68em] text-muted-foreground">v{appVersion}</div>}
         <div className="flex flex-col gap-4">
           {error && (
             <Alert variant="destructive">

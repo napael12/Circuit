@@ -14,7 +14,7 @@ export function gridToCsv(grid: unknown[][]): string {
 /** Builds a CSV string from row objects, using datatable-column/chart-column defs for header labels + field paths when available, else the raw keys of the first row. */
 export function rowsToCsv(rows: Record<string, unknown>[], columns?: PanelNode[]): string {
   const cols = columns?.length
-    ? columns.map((c) => ({ path: c.fieldPath || c.field || '', label: c.fieldDisplay || c.field || c.id }))
+    ? columns.map((c) => ({ path: c.field || '', label: c.fieldDisplay || c.field || c.id }))
     : Object.keys(rows[0] ?? {}).map((key) => ({ path: key, label: key }))
 
   const lines = [cols.map((c) => c.label), ...rows.map((row) => cols.map((c) => getFieldValue(row, c.path)))]

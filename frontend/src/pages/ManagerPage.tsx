@@ -6,13 +6,14 @@ import type { AppUser, DataConnection, Role } from '../api/types'
 import { StatusBar } from '../components/layout/StatusBar'
 import { useBrandingStore } from '../store/branding'
 import { ApiKeysPanel } from '../components/manager/ApiKeysPanel'
+import { BackupPanel } from '../components/manager/BackupPanel'
 import { ConnectionsPanel } from '../components/manager/ConnectionsPanel'
 import { CrudTable } from '../components/manager/CrudTable'
 import { DashboardsPanel } from '../components/manager/DashboardsPanel'
 import { DatastoresPanel } from '../components/manager/DatastoresPanel'
 import type { FormField } from '../components/manager/formFields'
 
-const TABS = ['dashboards', 'connections', 'datastores', 'api-keys', 'users', 'roles', 'settings'] as const
+const TABS = ['dashboards', 'connections', 'datastores', 'api-keys', 'users', 'roles', 'settings', 'backup'] as const
 type TabName = (typeof TABS)[number]
 
 // Mockup: the manager table's leading "identity" column (ID/Name/Username)
@@ -61,6 +62,7 @@ export function ManagerPage() {
         {tab === 'dashboards' && <DashboardsPanel />}
         {tab === 'connections' && <ConnectionsPanel roles={roles} />}
         {tab === 'datastores' && <DatastoresPanel connections={connections} roles={roles} />}
+        {tab === 'backup' && <BackupPanel />}
         {tab === 'api-keys' && <ApiKeysPanel users={users} />}
         {tab === 'settings' && (
           <CrudTable

@@ -9,12 +9,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/Field'
 
-import { DataGrid, DataGridContainer, dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
+import { dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
 import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
-import { DataGridTable } from '../reui/data-grid/data-grid-table'
 import type { DatastorePreviewResult } from '../../api/types'
 import { toRows, type DatatableRow } from '../controls/datatableUtils'
 import { downloadCsv, rowsToCsv, sanitizeFilename } from '../../utils/csv'
+import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
 
 const DEFAULT_LIMIT = 10
 
@@ -67,7 +67,13 @@ export function DatastorePreviewPanel({ initialParams, onRun, name }: Props) {
         })),
     [rows],
   )
-  const table = useTable({ features: dataGridFeatures, columns, data: rows, getRowId: (row) => String(row.id) })
+  const table = useTable({
+    features: dataGridFeatures,
+    columns,
+    data: rows,
+    getRowId: (row) => String(row.id),
+    initialState: managerGridInitialState,
+  })
   const isTabular = Array.isArray(result?.data)
   const handleExport = () => downloadCsv(sanitizeFilename(name || 'datastore-preview'), rowsToCsv(rows))
 
@@ -140,13 +146,7 @@ export function DatastorePreviewPanel({ initialParams, onRun, name }: Props) {
           <ContextMenuTrigger asChild>
             <div className="min-h-[240px] min-w-0 flex-1">
               {isTabular ? (
-                <div className="h-full min-w-0 overflow-auto rounded-lg border border-border">
-                  <DataGrid table={table} recordCount={rows.length} tableLayout={{ dense: true, width: 'auto' }}>
-                    <DataGridContainer className="w-max min-w-full overflow-visible">
-                      <DataGridTable />
-                    </DataGridContainer>
-                  </DataGrid>
-                </div>
+                <ManagerGrid className="h-full" table={table} recordCount={rows.length} tableLayout={{ dense: true, width: 'auto' }} />
               ) : (
                 <pre className="max-h-[320px] overflow-auto rounded-lg border border-border p-2 text-xs">
                   {JSON.stringify(result.data, null, 2)}

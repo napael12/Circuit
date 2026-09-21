@@ -536,6 +536,7 @@ export function EditorPage() {
   const [loadColumnsPrompt, setLoadColumnsPrompt] = useState<{ nodeId: string; columns: PanelNode[] } | null>(null)
 
   const applyLoadedColumns = (nodeId: string, columns: PanelNode[], mode: 'replace' | 'add') => {
+    const isKpi = findNodeInContent(content, nodeId)?.type === 'kpi'
     setContent((c) => {
       const nodeRoot = findRootContaining(c, nodeId)
       if (!nodeRoot) return c
@@ -550,14 +551,18 @@ export function EditorPage() {
         }),
       )
     })
-    toast.success('Columns loaded.')
+    toast.success(isKpi ? 'Cards loaded.' : 'Columns loaded.')
   }
 
-  /** Shared tail for both "Load Columns from Datastore" and "...from JSON": infer columns from sample rows, then either apply directly or prompt replace-vs-add if the node already has columns. */
+  /** Shared tail for both "Load Columns/Generate Cards from Datastore" and "...from JSON": infer columns from sample rows, then either apply directly or prompt replace-vs-add if the node already has columns. */
   const finishLoadColumns = (nodeId: string, rows: unknown[]) => {
     const node = findNodeInContent(content, nodeId)
     if (!node) return
-    const columnType = node.type === 'chart' ? 'chart-column' : node.type === 'pivot' ? 'pivot-column' : 'datatable-column'
+    const columnType =
+      node.type === 'chart' ? 'chart-column'
+      : node.type === 'pivot' ? 'pivot-column'
+      : node.type === 'kpi' ? 'kpi-column'
+      : 'datatable-column'
     const columns = buildColumnsFromSample(rows, columnType)
     if ((node.columns ?? []).length > 0) {
       setLoadColumnsPrompt({ nodeId, columns })
@@ -578,12 +583,14 @@ export function EditorPage() {
       toast.error('Datastore not found.')
       return
     }
+    // Use each parameter's Default value so parameterised datastores return sample rows.
+    const params = Object.fromEntries(content.parameters.map((p) => [p.name, p.defaultValue ?? '']))
     let result: DatastorePreviewResult
     try {
       result =
         entry.scope === 'local'
-          ? await api.post<DatastorePreviewResult>('/datastores/preview-config/', { ...entry, params: {}, limit: 2 })
-          : await api.post<DatastorePreviewResult>(`/datastores/${entry.name}/preview/`, { params: {}, limit: 2 })
+          ? await api.post<DatastorePreviewResult>('/datastores/preview-config/', { ...entry, params, limit: 2 })
+          : await api.post<DatastorePreviewResult>(`/datastores/${entry.name}/preview/`, { params, limit: 2 })
     } catch (err) {
       toast.error(String(err))
       return
@@ -865,6 +872,7 @@ export function EditorPage() {
 
       {loadColumnsPrompt && (
         <LoadColumnsDialog
+          itemLabel={findNodeInContent(content, loadColumnsPrompt.nodeId)?.type === 'kpi' ? 'cards' : 'columns'}
           onClose={() => setLoadColumnsPrompt(null)}
           onReplace={() => {
             applyLoadedColumns(loadColumnsPrompt.nodeId, loadColumnsPrompt.columns, 'replace')
@@ -879,6 +887,7 @@ export function EditorPage() {
 
       {jsonColumnsNodeId && (
         <LoadColumnsFromJsonDialog
+          itemLabel={findNodeInContent(content, jsonColumnsNodeId)?.type === 'kpi' ? 'cards' : 'columns'}
           onSubmit={(rows) => {
             finishLoadColumns(jsonColumnsNodeId, rows)
             setJsonColumnsNodeId(null)

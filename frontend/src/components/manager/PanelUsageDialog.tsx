@@ -9,14 +9,12 @@ import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-import { DataGrid, dataGridFeatures } from '../reui/data-grid/data-grid'
+import { dataGridFeatures } from '../reui/data-grid/data-grid'
 import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
-import { DataGridPagination } from '../reui/data-grid/data-grid-pagination'
-import { DataGridScrollArea } from '../reui/data-grid/data-grid-scroll-area'
-import { DataGridTable } from '../reui/data-grid/data-grid-table'
 import { api } from '../../api/client'
 import type { Panel, PanelNode, PanelUpdateRow, PanelUsageRow, PanelUsageSummary, PanelUsageTopUser } from '../../api/types'
 import { downloadCsv, rowsToCsv, sanitizeFilename } from '../../utils/csv'
+import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
 
 interface Props {
   panel: Panel
@@ -226,28 +224,10 @@ function HistoryTable({ rows, loading }: { rows: HistoryRow[]; loading: boolean 
     // reui's DataGrid isn't virtualized -- up to USAGE_HISTORY_LIMIT rows
     // rendered straight into the DOM at once can hang the browser (the same
     // issue DatatableControl's own pageSize cap exists for).
-    initialState: { pagination: { pageIndex: 0, pageSize: 25 } },
+    initialState: managerGridInitialState,
   })
 
   return (
-    <DataGrid table={table} recordCount={rows.length} isLoading={loading} tableLayout={{ dense: true }}>
-      <div className="flex min-h-0 min-w-0 flex-1">
-        {/* This wrapper must itself be a flex container: DataGridScrollArea's
-            own root div has no explicit height, so it needs to be
-            *stretched* by a flex parent to get a definite height at all --
-            a plain block wrapper leaves it at height:auto, growing to the
-            content's full height instead of clipping/scrolling it. min-w-0
-            is the same fix on the width axis: a flex item's default
-            min-width is its content's intrinsic width, so a wide table
-            would otherwise force this flex chain wider than the container
-            instead of ever overflowing/scrolling within it. */}
-        <DataGridScrollArea orientation="both" className="h-full">
-          <DataGridTable />
-        </DataGridScrollArea>
-      </div>
-      <div className="flex-none border-t border-border p-1.5">
-        <DataGridPagination />
-      </div>
-    </DataGrid>
+    <ManagerGrid bare table={table} recordCount={rows.length} isLoading={loading} />
   )
 }

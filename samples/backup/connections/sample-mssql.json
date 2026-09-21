@@ -1,0 +1,22 @@
+{
+  "id": "sample-mssql",
+  "description": "MS SQL Server template  (Local Database)",
+  "type": "sql",
+  "dialect": "mssql+pyodbc",
+  "host": "localhost",
+  "port": 1433,
+  "database": "example",
+  "options": {
+    "driver": "ODBC Driver 17 for SQL Server"
+  },
+  "url": "",
+  "username": "sa",
+  "config": {
+    "test_query": "select 1"
+  },
+  "max_rows": 0,
+  "timeout_seconds": 30,
+  "created_at": "2026-08-16T19:16:18.140622Z",
+  "updated_at": "2026-08-21T18:14:49.254715Z",
+  "allowed_roles": []
+}

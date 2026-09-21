@@ -23,7 +23,7 @@ export interface PivotFieldDef {
 }
 
 export function toFieldDef(node: PanelNode): PivotFieldDef {
-  return { node, path: node.fieldPath || node.field || '', label: node.fieldDisplay || node.field || node.id }
+  return { node, path: node.field || '', label: node.fieldDisplay || node.field || node.id }
 }
 
 export function aggregate(values: number[], fn: AggrFn): number | null {
@@ -244,7 +244,7 @@ export function buildPivot(rows: DatatableRow[], columns: PanelNode[]): PivotRes
  */
 export function pivotToCsv(result: PivotResult, options: { rowTotals?: boolean; columnTotals?: boolean }): string {
   const { indexFields, columnFields, valueFields, rowTree, columnTree, rowLeaves, columnLeaves } = result
-  const fmt = (value: number | null, field: PivotFieldDef) => formatValue(value, field.node.dataType, field.node.dataFormat)
+  const fmt = (value: number | null, field: PivotFieldDef) => formatValue(value, field.node.dataType, field.node.dataFormat, field.node.humanReadable)
 
   const rowPlan: GroupPlan = indexFields.length ? buildGroupPlan(rowTree, indexFields) : { items: [{ kind: 'leaf', node: rowLeaves[0] }], levelCells: [] }
   const columnPlan: GroupPlan = columnFields.length
@@ -268,8 +268,8 @@ export function pivotToCsv(result: PivotResult, options: { rowTotals?: boolean; 
     const rowNode = item.node
     const level = item.level ?? 0
     const indexCells = indexFields.map((f, i) => {
-      if (item.kind === 'leaf' || i < level) return formatValue(rowNode.path[i], f.node.dataType, f.node.dataFormat)
-      if (i === level) return `${formatValue(rowNode.path[i], f.node.dataType, f.node.dataFormat)} Total`
+      if (item.kind === 'leaf' || i < level) return formatValue(rowNode.path[i], f.node.dataType, f.node.dataFormat, f.node.humanReadable)
+      if (i === level) return `${formatValue(rowNode.path[i], f.node.dataType, f.node.dataFormat, f.node.humanReadable)} Total`
       return ''
     })
     grid.push([

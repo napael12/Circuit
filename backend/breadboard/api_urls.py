@@ -7,7 +7,7 @@ from catalog.views import SqlDefViewSet
 from connections.views import DataConnectionViewSet
 from datastore.views import DatastoreViewSet
 from panels.views import PanelViewSet
-from portal.views import BrandingView, LoginView, LogoutView, NavTreeView, SessionView, SettingViewSet
+from portal.views import BackupView, BrandingView, LoginView, LogoutView, NavTreeView, SessionView, SettingViewSet
 
 from .public_api import PullDatastoreView, PushDatastoreView
 
@@ -23,6 +23,7 @@ router.register('api-keys', ApiKeyViewSet)
 
 urlpatterns = router.urls + [
     path('nav-tree/', NavTreeView.as_view(), name='nav-tree'),
+    path('backup/', BackupView.as_view(), name='backup'),
     path('branding/', BrandingView.as_view(), name='branding'),
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('auth/logout/', LogoutView.as_view(), name='auth-logout'),

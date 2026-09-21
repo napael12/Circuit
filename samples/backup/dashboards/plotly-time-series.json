@@ -1,0 +1,187 @@
+{
+  "id": "plotly-time-series",
+  "name": "Plotly Time Series",
+  "slug": "plotly-time-series",
+  "category": "Examples",
+  "subcategory": "Plotly",
+  "description": "Plotly time series (plotly.com/javascript/time-series) driven by the stock-selector datastore; pick a stock parameter. One plotly-trace node per line.",
+  "content": {
+    "parameters": [
+      {
+        "name": "stock",
+        "label": "stock",
+        "dataType": "str",
+        "defaultValue": "NFLX",
+        "hidden": false,
+        "datastore": "stock-parameters",
+        "selectorColumn": "symbol"
+      }
+    ],
+    "datastores": [
+      {
+        "id": "ds_ts_stock",
+        "name": "stock-selector",
+        "scope": "global"
+      },
+      {
+        "id": "ds_mths198110",
+        "name": "stock-parameters",
+        "scope": "local",
+        "source_type": "query",
+        "connection": "postgres-odbc",
+        "inline_sql": "select symbol, count(*) nr_quotes, min(date) min_date, max(date) max_date from stocks group by symbol",
+        "action": "",
+        "object_key": "",
+        "file_expression": "",
+        "body": "",
+        "data_url": "",
+        "json_root_path": "",
+        "renderer_type": "none",
+        "renderer_config": {},
+        "default_params": {}
+      }
+    ],
+    "content": [
+      {
+        "id": "root",
+        "type": "layout",
+        "direction": "vertical",
+        "weight": 1,
+        "title": "Time Series",
+        "components": [
+          {
+            "id": "plotly-chart_ts",
+            "type": "plotly-chart",
+            "title": "${stock} Price History",
+            "weight": 1,
+            "datastore": "stock-selector",
+            "plotlyConfig": {
+              "layout": {
+                "title": {
+                  "text": ""
+                },
+                "legend": {
+                  "orientation": "h"
+                },
+                "yaxis": {
+                  "title": {
+                    "text": "Price (USD)"
+                  },
+                  "type": "linear",
+                  "range": [
+                    274.4100002777778,
+                    591.2099947222223
+                  ],
+                  "autorange": true
+                },
+                "xaxis": {
+                  "type": "date",
+                  "rangeslider": {
+                    "visible": true,
+                    "yaxis": {
+                      "_template": null,
+                      "rangemode": "match"
+                    },
+                    "autorange": true,
+                    "range": [
+                      "2020-03-12",
+                      "2020-08-03"
+                    ]
+                  },
+                  "rangeselector": {
+                    "buttons": [
+                      {
+                        "count": 1,
+                        "label": "1m",
+                        "step": "month",
+                        "stepmode": "backward"
+                      },
+                      {
+                        "count": 6,
+                        "label": "6m",
+                        "step": "month",
+                        "stepmode": "backward"
+                      },
+                      {
+                        "count": 1,
+                        "label": "1y",
+                        "step": "year",
+                        "stepmode": "backward"
+                      },
+                      {
+                        "step": "all"
+                      }
+                    ]
+                  },
+                  "range": [
+                    "2020-03-12",
+                    "2020-08-03"
+                  ],
+                  "autorange": true
+                }
+              }
+            },
+            "columns": [
+              {
+                "id": "plotly-trace_ts1",
+                "type": "plotly-trace",
+                "fieldDisplay": "Close",
+                "series": "",
+                "xField": "date",
+                "yField": "close",
+                "traceType": "scatter",
+                "traceMode": "lines",
+                "lineColor": "#17becf",
+                "lineWidth": 2
+              },
+              {
+                "id": "plotly-trace_ts2",
+                "type": "plotly-trace",
+                "fieldDisplay": "High",
+                "series": "",
+                "xField": "date",
+                "yField": "high",
+                "traceType": "scatter",
+                "traceMode": "lines",
+                "lineColor": "#2ca02c",
+                "lineWidth": 1,
+                "traceConfig": {
+                  "opacity": 0.6
+                }
+              },
+              {
+                "id": "plotly-trace_ts3",
+                "type": "plotly-trace",
+                "fieldDisplay": "Low",
+                "series": "",
+                "xField": "date",
+                "yField": "low",
+                "traceType": "scatter",
+                "traceMode": "lines",
+                "lineColor": "#d62728",
+                "lineWidth": 1,
+                "traceConfig": {
+                  "opacity": 0.6
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "drilldowns": [],
+    "links": []
+  },
+  "created_at": "2026-09-20T21:54:19.038802Z",
+  "created_by": 1,
+  "created_by_username": "admin",
+  "updated_at": "2026-09-20T22:32:48.970018Z",
+  "updated_by": 1,
+  "updated_by_username": "admin",
+  "last_accessed_at": null,
+  "last_accessed_by_username": null,
+  "allowed_roles": [
+    12,
+    9
+  ]
+}

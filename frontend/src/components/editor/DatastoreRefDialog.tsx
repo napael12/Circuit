@@ -34,6 +34,7 @@ function refToDatastore(ref: PanelDatastoreRef): Datastore {
     sql_def: null,
     inline_sql: ref.inline_sql ?? '',
     row_limit: ref.row_limit ?? null,
+    cache_seconds: null,
     object_key: ref.object_key ?? '',
     object_url: ref.object_url ?? '',
     body: ref.body ?? '',

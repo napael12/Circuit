@@ -111,6 +111,10 @@ class Datastore(models.Model):
     sql_def = models.ForeignKey(SqlDef, null=True, blank=True, on_delete=models.SET_NULL)
     inline_sql = models.TextField(blank=True, help_text='Used when sql_def is not set')
     row_limit = models.PositiveIntegerField(null=True, blank=True)
+    # Result cache term in seconds (null/0 = caching off). See
+    # datastore.cache: entries are keyed by datastore id + the full set of
+    # input parameters, and cleared per datastore via its "Clear cache" action.
+    cache_seconds = models.PositiveIntegerField(null=True, blank=True)
 
     # source_type=serialized + access_type=s3: the object key/path within
     # the connection's bucket, used when object_url is blank -- also

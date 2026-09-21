@@ -13,14 +13,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 
-import { DataGrid, dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
+import { dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
 import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
 import { TextColumnFilter } from '../reui/data-grid/data-grid-header-filters'
-import { DataGridScrollArea } from '../reui/data-grid/data-grid-scroll-area'
-import { DataGridTable } from '../reui/data-grid/data-grid-table'
 import { PanelUsageDialog } from '../manager/PanelUsageDialog'
 import type { Panel } from '../../api/types'
 import { useSessionStore } from '../../store/session'
+import { ManagerGrid, managerGridInitialState } from '../manager/ManagerGrid'
 
 const PRIMARY_CELL_CLASS = 'text-blue-600 dark:text-blue-500 font-medium'
 
@@ -172,7 +171,7 @@ export function DashboardsGrid({ rows, loading, favoriteIds, onToggleFavorite }:
     [navigate, isAdmin, favoriteIds, onToggleFavorite],
   )
 
-  const table = useTable({ features: dataGridFeatures, columns, data: filteredRows, getRowId: (row) => row.id })
+  const table = useTable({ features: dataGridFeatures, columns, data: filteredRows, getRowId: (row) => row.id, initialState: managerGridInitialState })
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -185,16 +184,7 @@ export function DashboardsGrid({ rows, loading, favoriteIds, onToggleFavorite }:
           className="h-8 pl-8 text-[0.85em]"
         />
       </div>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-border">
-        <DataGrid table={table} recordCount={filteredRows.length} isLoading={loading} tableLayout={{ dense: true }}>
-          {/* See DashboardsList's own prior comment: this wrapper must be a
-              flex container so DataGridScrollArea (height:auto by default)
-              actually stretches to fill and scroll within it. */}
-          <DataGridScrollArea orientation="both" className="h-full">
-            <DataGridTable />
-          </DataGridScrollArea>
-        </DataGrid>
-      </div>
+      <ManagerGrid table={table} recordCount={filteredRows.length} isLoading={loading} />
       {usageTarget && <PanelUsageDialog panel={usageTarget} onClose={() => setUsageTarget(null)} />}
     </div>
   )

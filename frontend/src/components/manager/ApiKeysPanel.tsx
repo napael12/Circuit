@@ -13,15 +13,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-import { DataGrid, dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
+import { dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-grid'
 import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
 import { TextColumnFilter } from '../reui/data-grid/data-grid-header-filters'
-import { DataGridScrollArea } from '../reui/data-grid/data-grid-scroll-area'
-import { DataGridTable } from '../reui/data-grid/data-grid-table'
 import { ApiKeyUsageDialog } from './ApiKeyUsageDialog'
 import { CreateApiKeyDialog } from './CreateApiKeyDialog'
 import { api } from '../../api/client'
 import type { ApiKey, AppUser } from '../../api/types'
+import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
 
 interface Props {
   users: AppUser[]
@@ -163,7 +162,7 @@ export function ApiKeysPanel({ users }: Props) {
     [],
   )
 
-  const table = useTable({ features: dataGridFeatures, columns, data: rows, getRowId: (row) => row.id })
+  const table = useTable({ features: dataGridFeatures, columns, data: rows, getRowId: (row) => row.id, initialState: managerGridInitialState })
 
   return (
     <div className="flex h-full flex-col">
@@ -174,13 +173,7 @@ export function ApiKeysPanel({ users }: Props) {
           New
         </Button>
       </div>
-      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-lg border border-border">
-        <DataGrid table={table} recordCount={rows.length} isLoading={loading} tableLayout={{ dense: true }}>
-          <DataGridScrollArea orientation="both" className="h-full">
-            <DataGridTable />
-          </DataGridScrollArea>
-        </DataGrid>
-      </div>
+      <ManagerGrid table={table} recordCount={rows.length} isLoading={loading} />
       {createOpen && <CreateApiKeyDialog users={users} onClose={() => setCreateOpen(false)} onCreated={load} />}
       {usageTarget && <ApiKeyUsageDialog apiKey={usageTarget} onClose={() => setUsageTarget(null)} />}
     </div>

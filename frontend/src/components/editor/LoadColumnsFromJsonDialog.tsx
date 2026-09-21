@@ -7,6 +7,8 @@ import { Textarea } from '@/components/ui/textarea'
 interface Props {
   onSubmit: (rows: unknown[]) => void
   onClose: () => void
+  /** "columns" (default) or "cards" (specs/kpi.md's "Generate Cards") -- wording only, same buildColumnsFromSample mechanism either way. */
+  itemLabel?: string
 }
 
 /**
@@ -16,7 +18,7 @@ interface Props {
  * isn't wired up yet, or columns that don't exactly match what the
  * datastore currently returns.
  */
-export function LoadColumnsFromJsonDialog({ onSubmit, onClose }: Props) {
+export function LoadColumnsFromJsonDialog({ onSubmit, onClose, itemLabel = 'columns' }: Props) {
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -40,10 +42,10 @@ export function LoadColumnsFromJsonDialog({ onSubmit, onClose }: Props) {
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Load columns from JSON</DialogTitle>
+          <DialogTitle>Load {itemLabel} from JSON</DialogTitle>
         </DialogHeader>
         <p className="text-[0.85em] text-muted-foreground">
-          Paste one example record (or an array of a few) -- columns are inferred the same way as loading from a
+          Paste one example record (or an array of a few) -- {itemLabel} are inferred the same way as loading from a
           datastore's sample rows.
         </p>
         <Textarea

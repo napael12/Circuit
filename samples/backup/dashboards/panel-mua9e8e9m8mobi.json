@@ -1,0 +1,200 @@
+{
+  "id": "panel-mua9e8e9m8mobi",
+  "name": "KPI Example",
+  "slug": "kpi-example",
+  "category": "Examples",
+  "subcategory": "KPI",
+  "description": "Display of HTML and KPI Displays",
+  "content": {
+    "parameters": [
+      {
+        "name": "stock",
+        "label": "stock",
+        "dataType": "str",
+        "defaultValue": "AAPL",
+        "datastore": "stock-parameters"
+      }
+    ],
+    "datastores": [
+      {
+        "id": "ds_mua9g4663",
+        "name": "stock-analysis",
+        "scope": "local",
+        "source_type": "query",
+        "access_type": "",
+        "connection": "postgres-odbc",
+        "inline_sql": "SELECT DISTINCT\n    symbol,\n    MAX(close) OVER (PARTITION BY symbol) AS max_close,\n    FIRST_VALUE(date) OVER (\n        PARTITION BY symbol ORDER BY close DESC, date ASC\n        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\n    ) AS max_close_date,\n    MIN(close) OVER (PARTITION BY symbol) AS min_close,\n    FIRST_VALUE(date) OVER (\n        PARTITION BY symbol ORDER BY close ASC, date ASC\n        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\n    ) AS min_close_date,\n    FIRST_VALUE(date) OVER (\n        PARTITION BY symbol ORDER BY date DESC\n        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\n    ) AS last_date,\n    FIRST_VALUE(close) OVER (\n        PARTITION BY symbol ORDER BY date DESC\n        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING\n    ) AS last_close,\n    COUNT(*) OVER (PARTITION BY symbol) AS total_quotes\nFROM stocks where symbol='${stock}'\n\n",
+        "object_key": "",
+        "object_url": "",
+        "body": "",
+        "data_url": "",
+        "request_method": "GET",
+        "request_params": {},
+        "request_body": "",
+        "file_path": "",
+        "file_expression": "",
+        "renderer_type": "none",
+        "renderer_config": {},
+        "default_params": {}
+      },
+      {
+        "id": "ds_muaaca5a17",
+        "name": "stock-parameters",
+        "scope": "local",
+        "source_type": "query",
+        "connection": "postgres-odbc",
+        "inline_sql": "select symbol, count(*) nr_quotes, min(date) min_date, max(date) max_date from stocks group by symbol",
+        "action": "",
+        "object_key": "",
+        "file_expression": "",
+        "body": "",
+        "data_url": "",
+        "json_root_path": "",
+        "renderer_type": "none",
+        "renderer_config": {},
+        "default_params": {}
+      }
+    ],
+    "content": [
+      {
+        "id": "root",
+        "type": "layout",
+        "direction": "vertical",
+        "weight": 1,
+        "components": [
+          {
+            "id": "html_mua9i2we13",
+            "type": "html",
+            "title": "Section Header",
+            "weight": 1,
+            "body": "<h2>Example of  KPI for selected stock</h2>\n<p>Click on Parameters, to select different stock </p>\n\n<p>Selected Stock is <b>${stock}</b></p>"
+          },
+          {
+            "id": "kpi_mua9ynz414",
+            "type": "kpi",
+            "title": "Stock KPI",
+            "weight": 1,
+            "columns": [
+              {
+                "id": "kpi-column_mua9zl2y16",
+                "type": "kpi-column",
+                "field": "Stock",
+                "fieldDisplay": "stock",
+                "headerValue": "Current Stock",
+                "bodyValue": "${stock}",
+                "footerValue": "Value set from Variable"
+              },
+              {
+                "id": "kpi-column_mua9yxgm15",
+                "type": "kpi-column",
+                "field": "Max Close",
+                "fieldDisplay": "Max Close",
+                "headerValue": "Max Close",
+                "bodyValue": "max_close",
+                "footerValue": "",
+                "dataType": "datetime",
+                "dataFormat": "yyyy-MM-dd"
+              },
+              {
+                "id": "kpi-column_muaag0xt18",
+                "type": "kpi-column",
+                "field": "max_close_date",
+                "fieldDisplay": "Max Close Date",
+                "headerValue": "Max Close Date",
+                "bodyValue": "max_close_date",
+                "footerValue": "",
+                "dataType": "datetime",
+                "dataFormat": "MM/dd/yy"
+              },
+              {
+                "id": "kpi-column_muaaogce36",
+                "type": "kpi-column",
+                "field": "symbol",
+                "fieldDisplay": "Symbol",
+                "dataType": "str",
+                "headerValue": "Symbol",
+                "bodyValue": "symbol",
+                "footerValue": ""
+              },
+              {
+                "id": "kpi-column_muaaogce37",
+                "type": "kpi-column",
+                "field": "max_close",
+                "fieldDisplay": "Max Close",
+                "dataType": "number",
+                "headerValue": "Max Close",
+                "bodyValue": "max_close",
+                "footerValue": "",
+                "humanReadable": true
+              },
+              {
+                "id": "kpi-column_muaaogce39",
+                "type": "kpi-column",
+                "field": "min_close",
+                "fieldDisplay": "Min Close",
+                "dataType": "number",
+                "headerValue": "Min Close",
+                "bodyValue": "min_close",
+                "footerValue": "",
+                "humanReadable": true
+              },
+              {
+                "id": "kpi-column_muaaogce40",
+                "type": "kpi-column",
+                "field": "min_close_date",
+                "fieldDisplay": "Min Close Date",
+                "dataType": "datetime",
+                "headerValue": "Min Close Date",
+                "bodyValue": "min_close_date",
+                "footerValue": "",
+                "dataFormat": "yyyy-MM-dd"
+              },
+              {
+                "id": "kpi-column_muaaogce41",
+                "type": "kpi-column",
+                "field": "last_date",
+                "fieldDisplay": "Last Date",
+                "dataType": "datetime",
+                "headerValue": "Last Date",
+                "bodyValue": "last_date",
+                "footerValue": ""
+              },
+              {
+                "id": "kpi-column_muaaogce42",
+                "type": "kpi-column",
+                "field": "last_close",
+                "fieldDisplay": "Last Close",
+                "dataType": "number",
+                "headerValue": "Last Close",
+                "bodyValue": "last_close",
+                "footerValue": ""
+              },
+              {
+                "id": "kpi-column_muaaogce43",
+                "type": "kpi-column",
+                "field": "total_quotes",
+                "fieldDisplay": "Total Quotes",
+                "dataType": "number",
+                "headerValue": "Total Quotes",
+                "bodyValue": "total_quotes",
+                "footerValue": ""
+              }
+            ],
+            "datastore": "stock-analysis"
+          }
+        ]
+      }
+    ],
+    "drilldowns": [],
+    "links": []
+  },
+  "created_at": "2026-09-20T20:21:16.162811Z",
+  "created_by": 1,
+  "created_by_username": "admin",
+  "updated_at": "2026-09-20T21:05:04.652928Z",
+  "updated_by": 1,
+  "updated_by_username": "admin",
+  "last_accessed_at": null,
+  "last_accessed_by_username": null,
+  "allowed_roles": []
+}
