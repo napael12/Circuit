@@ -12,6 +12,9 @@ import tailwindcss from '@tailwindcss/vite'
 // "npm build frontend to backend, to run as monosite" requirement.
 export default defineConfig(({ command }) => ({
   plugins: [react(), tailwindcss()],
+  // plotly.js's modular sources (imported in PlotlyChartControl.tsx, unlike its prebuilt bundles)
+  // reference Node's `global`.
+  define: { global: 'globalThis' },
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },

@@ -1,4 +1,8 @@
-import Plotly from 'plotly.js-basic-dist'
+import Plotly from 'plotly.js/lib/core'
+import bar from 'plotly.js/lib/bar'
+import heatmap from 'plotly.js/lib/heatmap'
+import pie from 'plotly.js/lib/pie'
+import scatter from 'plotly.js/lib/scatter'
 import type { Data, Layout } from 'plotly.js'
 import createPlotlyComponent from 'react-plotly.js/factory'
 
@@ -16,6 +20,10 @@ import { ControlContextMenu } from './ControlContextMenu'
 import { DatastoreStatusBadge } from './DatastoreStatusBadge'
 import type { ControlProps } from './types'
 
+// A custom bundle (plotly.js core + just these trace families) rather than plotly.js-basic-dist,
+// which has no heatmap. Registered once at module load.
+;(Plotly as unknown as { register: (modules: unknown[]) => void }).register([bar, heatmap, pie, scatter])
+
 const Plot = createPlotlyComponent(Plotly)
 
 // Same rationale/value as ChartControl's own MAX_CHART_ROWS -- Plotly's SVG
@@ -25,10 +33,16 @@ const Plot = createPlotlyComponent(Plotly)
 // from ChartControl.tsx, which this control shares no code with by design.
 const MAX_CHART_ROWS = 1000
 
-// plotly.js-basic-dist only bundles these trace families -- an unrecognized
-// or misspelled `type` on a plotly-trace degrades to 'scatter' rather than
-// crashing Plotly at render.
-const ALLOWED_TRACE_TYPES = new Set(['bar', 'scatter', 'pie'])
+// Only these trace families are registered above -- an unrecognized or misspelled
+// `type` on a plotly-trace degrades to 'scatter' rather than crashing Plotly at render.
+const ALLOWED_TRACE_TYPES = new Set(['bar', 'scatter', 'pie', 'heatmap'])
+
+/** Heatmap default: low = green -> high = red (override with the trace's traceConfig.colorscale). */
+const HEATMAP_COLORSCALE = [
+  [0, '#1a9850'],
+  [0.5, '#ffffbf'],
+  [1, '#d73027'],
+]
 
 interface TraceMapping {
   type?: string
@@ -42,6 +56,8 @@ interface TraceMapping {
   /** plotly-trace nodes only -- matched against each row's seriesField (default 'series'); blank = every row. */
   series?: string
   seriesField?: string
+  /** Wide-data mode: comma-separated datastore columns (or '*' = every column but seriesField) plotted as x = column name, y = the matching row's value. */
+  xColumns?: string
   lineColor?: string
   lineWidth?: number
   /** Trace-node-level declarative override, deep-merged after the built trace (before plotlyConfig.traces[i]). */
@@ -68,6 +84,7 @@ function nodeToMapping(node: PanelNode): TraceMapping {
     name: node.fieldDisplay || node.series,
     series: node.series,
     seriesField: node.seriesField,
+    xColumns: node.xColumns,
     lineColor: node.lineColor,
     lineWidth: node.lineWidth,
     override: isPlainObject(node.traceConfig) ? node.traceConfig : undefined,
@@ -99,6 +116,30 @@ function buildTrace(mapping: TraceMapping, allRows: Record<string, unknown>[], o
     name: mapping.name || mapping.series || mapping.y || mapping.x,
     x: mapping.x ? rows.map((r) => getFieldValue(r, mapping.x!)) : [],
     y: mapping.y ? rows.map((r) => getFieldValue(r, mapping.y!)) : [],
+  }
+  // Wide data: the column *names* are the x values and the (first) matching row's cells are the y values.
+  if (type === 'heatmap') {
+    // Heatmap: x = each row's xField value, y = the column names (xColumns, '*' = every column but
+    // the x/series fields), z[j][i] = row i's value in column j.
+    const skip = new Set([mapping.x, mapping.seriesField || DEFAULT_SERIES_FIELD].filter(Boolean))
+    const columns = mapping.xColumns?.trim() && mapping.xColumns.trim() !== '*'
+      ? mapping.xColumns.split(',').map((c) => c.trim()).filter(Boolean)
+      : Object.keys(rows[0] ?? {}).filter((k) => !skip.has(k))
+    trace.x = mapping.x ? rows.map((r) => getFieldValue(r, mapping.x!)) : []
+    trace.y = columns
+    trace.z = columns.map((c) => rows.map((r) => getFieldValue(r, c)))
+    trace.colorscale = HEATMAP_COLORSCALE
+    delete trace.mode
+    if (mapping.name === undefined) trace.name = ''
+  } else if (mapping.xColumns?.trim()) {
+    const row = rows[0] ?? {}
+    const seriesField = mapping.seriesField || DEFAULT_SERIES_FIELD
+    const columns =
+      mapping.xColumns.trim() === '*'
+        ? Object.keys(row).filter((k) => k !== seriesField)
+        : mapping.xColumns.split(',').map((c) => c.trim()).filter(Boolean)
+    trace.x = columns
+    trace.y = columns.map((c) => getFieldValue(row, c))
   }
   if (mapping.text) trace.text = rows.map((r) => getFieldValue(r, mapping.text!))
   if (mapping.color || mapping.size) {

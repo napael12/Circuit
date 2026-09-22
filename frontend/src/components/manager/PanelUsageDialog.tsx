@@ -22,7 +22,7 @@ interface Props {
 }
 
 /** Shared shape HistoryTable renders -- both PanelUsageRow (accessed_at) and PanelUpdateRow (updated_at) map down to this. */
-interface HistoryRow {
+type HistoryRow = {
   id: number
   date: string
   user_name: string

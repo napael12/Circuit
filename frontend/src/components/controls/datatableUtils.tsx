@@ -275,7 +275,7 @@ export function buildColumns<TData extends DatatableRow = DatatableRow>(
         <DataGridColumnHeader
           column={column}
           title={label}
-          filter={hasHeaderFilter ? <HeaderFilterContent col={col} rows={rows} column={column} /> : undefined}
+          filter={hasHeaderFilter ? <HeaderFilterContent col={col} rows={rows} column={column as unknown as Column<DataGridFeatures, DatatableRow>} /> : undefined}
         />
       ),
       enableColumnFilter: !!col.filterType,

@@ -1,0 +1,178 @@
+{
+  "id": "panel-mubwqdar339yqu",
+  "name": "SPXVIX",
+  "slug": "spx-vix",
+  "category": "",
+  "subcategory": "",
+  "description": "",
+  "content": {
+    "parameters": [],
+    "datastores": [
+      {
+        "id": "ds_mubwr8j11",
+        "name": "spxvix-terms",
+        "scope": "global"
+      },
+      {
+        "id": "ds_spx_grid",
+        "name": "spxvix-grid",
+        "scope": "global"
+      }
+    ],
+    "content": [
+      {
+        "id": "root",
+        "type": "layout",
+        "direction": "horizontal",
+        "weight": 1,
+        "components": [
+          {
+            "id": "plotly-chart_mubwrtvy2",
+            "type": "plotly-chart",
+            "title": "Term Structure",
+            "weight": 1,
+            "plotlyConfig": {
+              "layout": {
+                "legend": {
+                  "orientation": "h"
+                },
+                "xaxis": {
+                  "title": {
+                    "text": "Days to expiry"
+                  }
+                },
+                "yaxis": {
+                  "title": {
+                    "text": "VIX"
+                  }
+                }
+              }
+            },
+            "columns": [
+              {
+                "id": "plotly-trace_spxs1",
+                "type": "plotly-trace",
+                "fieldDisplay": "spx-50% vol+70%",
+                "seriesField": "index",
+                "series": "spx-50% vol+70%",
+                "xColumns": "*",
+                "traceType": "scatter",
+                "traceMode": "lines+markers"
+              },
+              {
+                "id": "plotly-trace_spxs2",
+                "type": "plotly-trace",
+                "fieldDisplay": "spx-25% vol+70%",
+                "seriesField": "index",
+                "series": "spx-25% vol+70%",
+                "xColumns": "*",
+                "traceType": "scatter",
+                "traceMode": "lines+markers"
+              },
+              {
+                "id": "plotly-trace_spxs3",
+                "type": "plotly-trace",
+                "fieldDisplay": "spx-15% vol+40%",
+                "seriesField": "index",
+                "series": "spx-15% vol+40%",
+                "xColumns": "*",
+                "traceType": "scatter",
+                "traceMode": "lines+markers"
+              },
+              {
+                "id": "plotly-trace_spxs4",
+                "type": "plotly-trace",
+                "fieldDisplay": "spx-10% vol+25%",
+                "seriesField": "index",
+                "series": "spx-10% vol+25%",
+                "xColumns": "*",
+                "traceType": "scatter",
+                "traceMode": "lines+markers"
+              },
+              {
+                "id": "plotly-trace_spxs5",
+                "type": "plotly-trace",
+                "fieldDisplay": "spx+0% vol+0%",
+                "seriesField": "index",
+                "series": "spx+0% vol+0%",
+                "xColumns": "*",
+                "traceType": "scatter",
+                "traceMode": "lines+markers"
+              },
+              {
+                "id": "plotly-trace_spxs6",
+                "type": "plotly-trace",
+                "fieldDisplay": "spx+5% vol-10%",
+                "seriesField": "index",
+                "series": "spx+5% vol-10%",
+                "xColumns": "*",
+                "traceType": "scatter",
+                "traceMode": "lines+markers"
+              }
+            ],
+            "datastore": "spxvix-terms"
+          },
+          {
+            "id": "plotly-chart_mubx5qf04",
+            "type": "plotly-chart",
+            "title": "Grid",
+            "weight": 1,
+            "plotlyConfig": {
+              "layout": {
+                "xaxis": {
+                  "title": {
+                    "text": "Spot shock (index)"
+                  },
+                  "type": "category"
+                },
+                "yaxis": {
+                  "title": {
+                    "text": "Vol shock"
+                  },
+                  "type": "category"
+                }
+              }
+            },
+            "columns": [
+              {
+                "id": "plotly-trace_spxheat",
+                "type": "plotly-trace",
+                "fieldDisplay": "VIX",
+                "traceType": "heatmap",
+                "seriesField": "series",
+                "series": "",
+                "xField": "index",
+                "xColumns": "*",
+                "traceConfig": {
+                  "colorbar": {
+                    "title": {
+                      "text": "VIX"
+                    }
+                  },
+                  "hovertemplate": "spot %{x}<br>vol %{y}<br>VIX %{z:.1f}<extra></extra>",
+                  "texttemplate": "%{z:.1f}",
+                  "textfont": {
+                    "size": 10
+                  }
+                }
+              }
+            ],
+            "datastore": "spxvix-grid"
+          }
+        ],
+        "title": "SPX VIX"
+      }
+    ],
+    "drilldowns": [],
+    "links": []
+  },
+  "created_at": "2026-09-22T00:06:46.440880Z",
+  "created_by": 1,
+  "created_by_username": "admin",
+  "updated_at": "2026-09-22T00:26:47.054275Z",
+  "updated_by": 1,
+  "updated_by_username": "admin",
+  "last_accessed_at": null,
+  "last_accessed_by_username": null,
+  "allowed_roles": []
+}

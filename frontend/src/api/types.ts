@@ -512,10 +512,12 @@ export interface PanelNode {
   series?: string
   /** plotly-trace: datastore column `series` is matched against. Blank -> 'series'. */
   seriesField?: string
+  /** plotly-trace: wide-data mode -- comma-separated datastore columns (or '*' for every column except seriesField) plotted with the column names as x and the first matching row's values as y. Overrides xField/yField. */
+  xColumns?: string
   /** plotly-trace: datastore field paths for the x / y axes. */
   xField?: string
   yField?: string
-  /** plotly-trace: 'scatter' (default) | 'bar' | 'pie'. */
+  /** plotly-trace: 'scatter' (default) | 'bar' | 'pie' | 'heatmap'. */
   traceType?: string
   /** plotly-trace: 'lines' | 'markers' | 'lines+markers' (scatter only). */
   traceMode?: string

@@ -37,3 +37,6 @@ lerna-debug.log*
 # OS cruft
 .DS_Store
 Thumbs.db
+
+# Docker deployment secrets
+docker/.env
