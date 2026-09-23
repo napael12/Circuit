@@ -43,9 +43,6 @@ export function DashboardsPanel() {
   const navigate = useNavigate()
   const [rows, setRows] = useState<Panel[]>([])
   const [loading, setLoading] = useState(true)
-  // null while idle; a Panel while replacing that row from a file; '' while
-  // importing a brand new dashboard from the toolbar's Import button.
-  const [importTarget, setImportTarget] = useState<Panel | '' | null>(null)
   const [usageTarget, setUsageTarget] = useState<Panel | null>(null)
   const [cloneTarget, setCloneTarget] = useState<Panel | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
@@ -83,28 +80,19 @@ export function DashboardsPanel() {
   const handleImportFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
-    if (!file || importTarget === null) return
+    if (!file) return
+    // Derive an id/name from the filename, like the editor's own Upload JSON.
+    const base = file.name.replace(/\.json$/, '')
     const formData = new FormData()
     formData.append('file', file)
-    if (importTarget === '') {
-      // New dashboard: derive an id/name from the filename, like the editor's own Upload JSON.
-      const base = file.name.replace(/\.json$/, '')
-      formData.append('id', base)
-      formData.append('name', base)
-    } else {
-      // Replace this exact row -- id/name are forced, not read from the file.
-      formData.append('id', importTarget.id)
-      formData.append('name', importTarget.name)
-    }
+    formData.append('id', base)
+    formData.append('name', base)
     try {
-      const panel = await api.upload<Panel>('/panels/upload/', formData)
+      await api.upload<Panel>('/panels/upload/', formData)
       toast.success('Imported.')
-      if (importTarget === '') navigate(`/editor/${panel.id}`)
-      else load()
+      load() // stay on the Dashboards list -- just refresh it, no jump into the editor
     } catch (err) {
       toast.error(String(err))
-    } finally {
-      setImportTarget(null)
     }
   }
 
@@ -208,15 +196,6 @@ export function DashboardsPanel() {
                 <Download />
                 Export JSON
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  setImportTarget(row.original)
-                  importInputRef.current?.click()
-                }}
-              >
-                <Upload />
-                Import JSON
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={() => handleDelete(row.original.id)}>
                 <Trash2 />
@@ -240,10 +219,7 @@ export function DashboardsPanel() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => {
-            setImportTarget('')
-            importInputRef.current?.click()
-          }}
+          onClick={() => importInputRef.current?.click()}
         >
           <Upload />
           Import

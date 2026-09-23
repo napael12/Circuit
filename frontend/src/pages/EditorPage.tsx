@@ -88,6 +88,23 @@ const BLANK_CONTENT: PanelContent = {
   links: [],
 }
 
+/**
+ * Fills in a possibly-incomplete PanelContent (e.g. a dashboard imported
+ * from a hand-edited or otherwise not-quite-matching .json file -- the
+ * server-side shape check on upload/save doesn't guarantee every downstream
+ * field is present) so the rest of this page can keep assuming
+ * parameters/datastores/content are always arrays, same as
+ * drilldowns/links already do via `?? []` at their own read sites.
+ */
+function normalizeContent(content: PanelContent): PanelContent {
+  return {
+    ...content,
+    parameters: Array.isArray(content.parameters) ? content.parameters : [],
+    datastores: Array.isArray(content.datastores) ? content.datastores : [],
+    content: Array.isArray(content.content) && content.content.length > 0 ? content.content : BLANK_CONTENT.content,
+  }
+}
+
 /** Renaming a drilldown (specs/drilldown.md) -- selecting one in the tree shows just this. */
 const DRILLDOWN_META_SCHEMA: FieldSchema[] = [{ key: 'name', label: 'Name', type: 'text' }]
 
@@ -202,6 +219,13 @@ export function EditorPage() {
     }
     if (!id) return
     api.get<Panel>(`/panels/${id}/`).then((panel) => {
+      // A dashboard whose saved/imported content doesn't quite match the
+      // expected shape (see panels.views.upload's own shape check --
+      // dashboards saved before that check existed can still have this)
+      // gets filled in here rather than crashing the whole page below,
+      // where every other bit of code assumes parameters/datastores/content
+      // are always arrays.
+      const content = normalizeContent(panel.content)
       setPanelId(panel.id)
       setName(panel.name)
       setSlug(panel.slug ?? '')
@@ -209,16 +233,16 @@ export function EditorPage() {
       setCategory(panel.category ?? '')
       setSubcategory(panel.subcategory ?? '')
       setDescription(panel.description ?? '')
-      setContent(panel.content)
+      setContent(content)
       setAllowedRoles(panel.allowed_roles ?? [])
-      setSelection({ kind: 'node', id: panel.content.content[0]?.id ?? 'root' })
+      setSelection({ kind: 'node', id: content.content[0]?.id ?? 'root' })
       savedSnapshot.current = JSON.stringify({
         name: panel.name,
         slug: panel.slug ?? '',
         category: panel.category ?? '',
         subcategory: panel.subcategory ?? '',
         description: panel.description ?? '',
-        content: panel.content,
+        content,
         allowedRoles: panel.allowed_roles ?? [],
       })
     })
@@ -629,6 +653,12 @@ export function EditorPage() {
         <Button variant="outline" size="sm" onClick={() => setSaveAsOpen(true)}>
           Save As…
         </Button>
+        {!isNew && (
+          <Button variant="outline" size="sm" onClick={() => guardedNavigate(() => navigate(`/panel/${panelId}`))}>
+            <Eye />
+            View
+          </Button>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="icon-sm" aria-label="More actions">
@@ -638,10 +668,6 @@ export function EditorPage() {
           <DropdownMenuContent align="end" className="w-[200px]">
             {!isNew && (
               <>
-                <DropdownMenuItem onClick={() => guardedNavigate(() => navigate(`/panel/${panelId}`))}>
-                  <Eye />
-                  View
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => openInNewWindow(`/panel/${panelId}`)}>
                   <ExternalLink />
                   View in New Window

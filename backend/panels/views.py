@@ -293,7 +293,37 @@ class PanelViewSet(ModelViewSet):
     def upload(self, request):
         """Create/replace a panel from an uploaded .json dashboard export."""
         upload = request.FILES.get('file')
-        content = json.loads(upload.read()) if upload else request.data.get('content')
+        if upload:
+            try:
+                content = json.loads(upload.read())
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                return Response({'detail': f"Not a valid JSON file: {exc}"}, status=400)
+        else:
+            content = request.data.get('content')
+
+        # Same shape check as the editor's own paste-JSON dialog (see
+        # frontend isPanelContent) -- without this, an uploaded file that
+        # doesn't match specs/panel_design.md's shape (missing
+        # parameters/datastores, no single 'layout' root, ...) was silently
+        # saved as-is and only surfaced once someone opened it in the Editor,
+        # which assumes the shape and crashes with no error boundary to
+        # catch it (a blank page, not an error message).
+        content_list = content.get('content') if isinstance(content, dict) else None
+        is_valid_shape = (
+            isinstance(content, dict)
+            and isinstance(content.get('parameters'), list)
+            and isinstance(content.get('datastores'), list)
+            and isinstance(content_list, list)
+            and len(content_list) == 1
+            and isinstance(content_list[0], dict)
+            and content_list[0].get('type') == 'layout'
+        )
+        if not is_valid_shape:
+            return Response(
+                {'detail': "Not a valid dashboard export: expected parameters/datastores arrays and a single 'layout' root."},
+                status=400,
+            )
+
         panel, created = Panel.objects.update_or_create(
             id=request.data['id'],
             defaults={

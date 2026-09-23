@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 
 import { Spinner } from '@/components/ui/spinner'
 
 import { AppSidebar } from './components/layout/AppSidebar'
+import { ErrorBoundary } from './components/layout/ErrorBoundary'
 import { EditorPage } from './pages/EditorPage'
 import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
@@ -28,29 +29,36 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 
 /** specs/homepage.md: the persistent app shell -- AppSidebar plus whichever page is routed into the content panel beside it. */
 function AppShell() {
+  // Keyed on pathname so navigating away from a route that crashed (e.g. a
+  // dashboard whose content doesn't match what the Editor expects) remounts
+  // the boundary and clears its error, instead of it staying stuck showing
+  // the previous page's error forever.
+  const { pathname } = useLocation()
   return (
     <div className="flex h-screen min-h-0">
       <AppSidebar />
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/panel/:id" element={<PanelViewerPage />} />
-        <Route
-          path="/editor/:id"
-          element={
-            <RequireAdmin>
-              <EditorPage />
-            </RequireAdmin>
-          }
-        />
-        <Route
-          path="/manager"
-          element={
-            <RequireAdmin>
-              <ManagerPage />
-            </RequireAdmin>
-          }
-        />
-      </Routes>
+      <ErrorBoundary key={pathname}>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/panel/:id" element={<PanelViewerPage />} />
+          <Route
+            path="/editor/:id"
+            element={
+              <RequireAdmin>
+                <EditorPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/manager"
+            element={
+              <RequireAdmin>
+                <ManagerPage />
+              </RequireAdmin>
+            }
+          />
+        </Routes>
+      </ErrorBoundary>
     </div>
   )
 }

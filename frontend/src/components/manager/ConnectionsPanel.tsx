@@ -94,9 +94,16 @@ export function ConnectionsPanel({ roles }: { roles: Role[] }) {
     if (!file) return
     try {
       const item = await readSingleItemJson(file)
-      await api.post('/connections/import/', [item])
-      toast.success('Imported.')
-      load()
+      const result = await api.post<{ created: string[]; updated: string[]; errors: { id?: string; error?: string }[] }>(
+        '/connections/import/',
+        [item],
+      )
+      if (result.errors.length > 0) {
+        toast.error(result.errors.map((e) => e.error ?? `${e.id}: invalid`).join('; '))
+      } else {
+        toast.success('Imported.')
+        load()
+      }
     } catch (err) {
       toast.error(String(err))
     }
