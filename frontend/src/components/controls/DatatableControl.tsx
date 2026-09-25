@@ -27,7 +27,9 @@ import {
   groupRows,
   toRows,
   transposeRows,
+  type ColorScaleDomains,
   type DatatableRow,
+  type SignalDirection,
 } from './datatableUtils'
 import type { ControlProps } from './types'
 
@@ -55,10 +57,10 @@ const SIGNAL_FLASH_MS = 1200
  * buildColumns can tell "disabled" apart from "enabled, nothing changed yet"
  * (see its own `changedCells` doc comment).
  */
-function useChangedCells(rows: DatatableRow[], columns: PanelNode[], enabled: boolean): Set<string> | undefined {
+function useChangedCells(rows: DatatableRow[], columns: PanelNode[], enabled: boolean): Map<string, SignalDirection> | undefined {
   const prevRowsRef = useRef<DatatableRow[] | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const [changed, setChanged] = useState<Set<string>>(new Set())
+  const [changed, setChanged] = useState<Map<string, SignalDirection>>(new Map())
 
   useEffect(() => {
     if (!enabled) {
@@ -72,7 +74,7 @@ function useChangedCells(rows: DatatableRow[], columns: PanelNode[], enabled: bo
     if (next.size === 0) return
     setChanged(next)
     clearTimeout(timeoutRef.current)
-    timeoutRef.current = setTimeout(() => setChanged(new Set()), SIGNAL_FLASH_MS)
+    timeoutRef.current = setTimeout(() => setChanged(new Map()), SIGNAL_FLASH_MS)
   }, [rows, columns, enabled])
 
   useEffect(() => () => clearTimeout(timeoutRef.current), [])
@@ -100,7 +102,10 @@ export function DatatableControl({ component, datastores, previewMode }: Control
   // Signal on Update -- each of those assumes the un-transposed row shape.
   const transpose = !!component.transpose
   const treeMode = !transpose && !!component.treeRows
-  const changedCells = useChangedCells(rows, component.columns ?? [], !!component.signalOnUpdate && !transpose)
+  // `true` is legacy shorthand (a dashboard saved before the directional
+  // modes existed) for what's now written as the explicit 'neutral' mode.
+  const signalMode = component.signalOnUpdate === true ? 'neutral' : component.signalOnUpdate
+  const changedCells = useChangedCells(rows, component.columns ?? [], !!signalMode && !transpose)
   const isGrouped = useMemo(
     () => !transpose && (component.columns ?? []).some((c) => c.groupFunction === 'value'),
     [transpose, component.columns],
@@ -129,6 +134,38 @@ export function DatatableControl({ component, datastores, previewMode }: Control
   // so a column hidden from the on-screen table is still exportable.
   const visibleColumns = useMemo(() => (component.columns ?? []).filter((c) => !c.hidden), [component.columns])
 
+  // PanelNode.colorScale: each scaled column's min/max, from its own
+  // colorScaleMin/Max when set, else the lowest/highest numeric value among
+  // *all* currently loaded rows (not just filtered-to-visible ones, so the
+  // color of a given value doesn't shift as someone types into a column
+  // filter) -- undefined for a non-numeric value, so those never affect the
+  // range. A column left with no numeric value loaded yet gets no entry
+  // (colorScaleStyle then renders it uncolored rather than picking an
+  // arbitrary domain).
+  const colorScaleDomains = useMemo<ColorScaleDomains>(() => {
+    const domains: ColorScaleDomains = new Map()
+    for (const col of visibleColumns) {
+      if (!col.colorScale || col.colorScale === 'none' || col.dataType !== 'number' || !col.field) continue
+      let min = col.colorScaleMin
+      let max = col.colorScaleMax
+      if (min === undefined || max === undefined) {
+        let computedMin = Infinity
+        let computedMax = -Infinity
+        for (const row of rows) {
+          const raw = getFieldValue(row, col.field)
+          const num = typeof raw === 'number' ? raw : parseFloat(String(raw))
+          if (!Number.isFinite(num)) continue
+          if (num < computedMin) computedMin = num
+          if (num > computedMax) computedMax = num
+        }
+        if (min === undefined) min = computedMin
+        if (max === undefined) max = computedMax
+      }
+      if (Number.isFinite(min) && Number.isFinite(max)) domains.set(col.id, { min, max })
+    }
+    return domains
+  }, [visibleColumns, rows])
+
   const columns = useMemo(() => {
     const onLinkedCellClick = (col: PanelNode, value: unknown) =>
       setParameter(col.parameter!, value == null ? '' : String(value), component.id)
@@ -138,9 +175,23 @@ export function DatatableControl({ component, datastores, previewMode }: Control
       onLinkedCellClick,
       filterEnabled: component.filter,
       changedCells,
+      signalMode: signalMode || undefined,
+      colorScaleDomains,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transpose, component.transposeHeaderField, component.columns, rows, treeMode, isGrouped, component.id, component.filter, changedCells])
+  }, [
+    transpose,
+    component.transposeHeaderField,
+    component.columns,
+    rows,
+    treeMode,
+    isGrouped,
+    component.id,
+    component.filter,
+    changedCells,
+    signalMode,
+    colorScaleDomains,
+  ])
 
   // A hidden column can still drive its `parameter` -- buildColumns leaves
   // it out of the rendered grid entirely (see visibleColumns above), so
@@ -303,6 +354,7 @@ export function DatatableControl({ component, datastores, previewMode }: Control
             <DataGridScrollArea orientation="both" className="h-full">
               <DataGridTable
                 footerContent={hasTotalColumn ? <FooterRow columns={visibleColumns} rows={filteredRows} /> : undefined}
+                renderHeader={!component.hideHeader}
               />
             </DataGridScrollArea>
           </div>

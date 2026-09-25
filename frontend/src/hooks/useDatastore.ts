@@ -171,7 +171,10 @@ function useGlobalDatastore(
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!datastoreId) return
+    if (!datastoreId) {
+      setLoading(false)
+      return
+    }
     let cancelled = false
     Promise.all([api.get<Datastore>(`/datastores/${datastoreId}/`), api.get<string[]>(`/datastores/${datastoreId}/params/`)])
       .then(([ds, paramNames]) => {
@@ -182,7 +185,12 @@ function useGlobalDatastore(
         setInitialLastRunAt(ds.last_run_at)
         setRelevantParamNames(paramNames)
       })
-      .catch((err) => !cancelled && setError(String(err)))
+      .catch((err) => {
+        if (!cancelled) {
+          setError(String(err))
+          setLoading(false)
+        }
+      })
     return () => {
       cancelled = true
     }

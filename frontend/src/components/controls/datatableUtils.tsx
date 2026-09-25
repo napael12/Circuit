@@ -9,7 +9,7 @@ import type { DataGridFeatures } from '../reui/data-grid/data-grid'
 import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
 import { DataGridTableRowExpand } from '../reui/data-grid/data-grid-table'
 import type { PanelNode } from '../../api/types'
-import { formatValue, getFieldValue } from '../../utils/panelFormat'
+import { formatValue, getFieldValue, parseCssText } from '../../utils/panelFormat'
 import { aggregate } from '../../utils/pivot'
 
 export type DatatableRow = Record<string, unknown> & { id: string | number }
@@ -109,19 +109,30 @@ export function buildTreeRows(rows: DatatableRow[], idField: string, parentField
   return roots
 }
 
+/** PanelNode.signalOnUpdate's non-legacy values (see its own doc comment for the `true` shorthand). */
+export type SignalMode = 'neutral' | 'green-up-red-down' | 'red-up-green-down'
+/** Per-cell result of diffChangedCells: 'up'/'down' only when both the old and new value parsed as numbers, 'neutral' for any other changed value (a string/date/badge column, or a number that couldn't be compared). */
+export type SignalDirection = 'up' | 'down' | 'neutral'
+
 /**
  * `Signal on Update` (PanelNode.signalOnUpdate): compares `nextRows` against
  * the previous fetch's flat rows by `id` and returns the `${id}::${path}`
  * key of every visible column whose value actually changed on a row present
- * in both -- new rows (no matching prior id) and removed rows aren't
- * "changes" to a value, so they're never flagged. Relies on `id` being a
- * real, unique field on the dataset: `toRows` stamps a positional index as
- * `id` when the data has none, which would misread "row order shifted" as
- * "every value in this slot changed" -- the PanelNode.signalOnUpdate doc
- * comment and its editor field both call this out.
+ * in both, mapped to the direction of that change -- new rows (no matching
+ * prior id) and removed rows aren't "changes" to a value, so they're never
+ * flagged. Relies on `id` being a real, unique field on the dataset: `toRows`
+ * stamps a positional index as `id` when the data has none, which would
+ * misread "row order shifted" as "every value in this slot changed" -- the
+ * PanelNode.signalOnUpdate doc comment and its editor field both call this
+ * out.
+ *
+ * Direction is computed unconditionally, independent of which signalMode the
+ * table is actually in -- resolving 'neutral' mode's flat amber vs. a
+ * directional mode's green/red is the cell renderer's job (buildColumns),
+ * not this diff.
  */
-export function diffChangedCells(prevRows: DatatableRow[], nextRows: DatatableRow[], columns: PanelNode[]): Set<string> {
-  const changed = new Set<string>()
+export function diffChangedCells(prevRows: DatatableRow[], nextRows: DatatableRow[], columns: PanelNode[]): Map<string, SignalDirection> {
+  const changed = new Map<string, SignalDirection>()
   if (prevRows.length === 0 || nextRows.length === 0) return changed
   const prevById = new Map<string, DatatableRow>(prevRows.map((r) => [String(r.id), r]))
   const paths = columns.filter((c) => !c.hidden).map((c) => c.field || '')
@@ -130,7 +141,14 @@ export function diffChangedCells(prevRows: DatatableRow[], nextRows: DatatableRo
     if (!prev) continue
     for (const path of paths) {
       if (!path) continue
-      if (getFieldValue(prev, path) !== getFieldValue(row, path)) changed.add(`${row.id}::${path}`)
+      const prevValue = getFieldValue(prev, path)
+      const nextValue = getFieldValue(row, path)
+      if (prevValue === nextValue) continue
+      const prevNum = typeof prevValue === 'number' ? prevValue : parseFloat(String(prevValue))
+      const nextNum = typeof nextValue === 'number' ? nextValue : parseFloat(String(nextValue))
+      const direction: SignalDirection =
+        Number.isFinite(prevNum) && Number.isFinite(nextNum) && prevNum !== nextNum ? (nextNum > prevNum ? 'up' : 'down') : 'neutral'
+      changed.set(`${row.id}::${path}`, direction)
     }
   }
   return changed
@@ -162,9 +180,64 @@ interface BuildColumnsOptions {
   onLinkedCellClick?: (col: PanelNode, value: unknown, row: DatatableRow) => void
   /** The datatable's own "Filter" toggle -- a column only gets a header filter when this AND its own filterType are both set. */
   filterEnabled?: boolean
-  /** `${id}::${path}` keys currently flashing, from diffChangedCells -- see PanelNode.signalOnUpdate. */
-  changedCells?: Set<string>
+  /** `${id}::${path}` -> direction, currently flashing, from diffChangedCells -- see PanelNode.signalOnUpdate. */
+  changedCells?: Map<string, SignalDirection>
+  /** Resolved from PanelNode.signalOnUpdate (its legacy `true` already normalized to 'neutral' by the caller) -- which color a flashing cell's direction maps to. Only meaningful when changedCells is set. */
+  signalMode?: SignalMode
+  /** Per-column colorScale domain, from DatatableControl's own useMemo -- see colorScaleStyle. */
+  colorScaleDomains?: ColorScaleDomains
 }
+
+/** Resolves a changed cell's flash class for the datatable's configured signalMode -- 'neutral' (or a non-numeric change under any mode) is the original flat amber; the two directional modes swap which direction is green/red. 30% opacity per spec, vs. neutral's own 40%. */
+function signalFlashClass(direction: SignalDirection, signalMode: SignalMode): string {
+  if (direction === 'neutral' || signalMode === 'neutral') return 'bg-warning/40'
+  const isUp = direction === 'up'
+  const green = signalMode === 'green-up-red-down' ? isUp : !isUp
+  return green ? 'bg-success/30' : 'bg-destructive/30'
+}
+
+/** A column's `colorScale` min/max, computed once per render -- see DatatableControl.tsx's own colorScaleDomains useMemo. */
+export interface ColorScaleDomain {
+  min: number
+  max: number
+}
+
+// Fixed palette (PanelNode.colorScale doesn't expose custom colors in v1) --
+// low/high match the red/green signalFlashClass's directional modes already
+// use (--color-destructive/--color-success), so a table mixing both features
+// reads consistently; mid is a neutral amber-ish middle, same spirit as the
+// flash's own 'neutral' color.
+const COLOR_SCALE_LOW: [number, number, number] = [220, 38, 38] // --destructive
+const COLOR_SCALE_MID: [number, number, number] = [234, 179, 8] // amber-500, matches --warning
+const COLOR_SCALE_HIGH: [number, number, number] = [16, 185, 129] // emerald-500, matches --success
+
+function lerpRgb(a: [number, number, number], b: [number, number, number], t: number): string {
+  const r = Math.round(a[0] + (b[0] - a[0]) * t)
+  const g = Math.round(a[1] + (b[1] - a[1]) * t)
+  const bl = Math.round(a[2] + (b[2] - a[2]) * t)
+  return `rgb(${r} ${g} ${bl} / 0.35)`
+}
+
+/**
+ * Persistent cell background for PanelNode.colorScale -- undefined (no
+ * color) when the scale is off, the column isn't numeric, the value doesn't
+ * parse as a finite number, or `domain` is degenerate (min===max: nothing to
+ * scale against, e.g. every loaded row has the same value, or there's only
+ * one row). 'sequential' interpolates low->high across the whole domain;
+ * 'diverging' interpolates low->mid over the bottom half and mid->high over
+ * the top half.
+ */
+function colorScaleStyle(value: unknown, col: PanelNode, domain: ColorScaleDomain | undefined): CSSProperties | undefined {
+  if (!col.colorScale || col.colorScale === 'none' || col.dataType !== 'number' || !domain) return undefined
+  const num = typeof value === 'number' ? value : parseFloat(String(value))
+  if (!Number.isFinite(num) || domain.min === domain.max) return undefined
+  const t = Math.min(1, Math.max(0, (num - domain.min) / (domain.max - domain.min)))
+  if (col.colorScale === 'sequential') return { backgroundColor: lerpRgb(COLOR_SCALE_LOW, COLOR_SCALE_HIGH, t) }
+  return { backgroundColor: t < 0.5 ? lerpRgb(COLOR_SCALE_LOW, COLOR_SCALE_MID, t * 2) : lerpRgb(COLOR_SCALE_MID, COLOR_SCALE_HIGH, (t - 0.5) * 2) }
+}
+
+/** Column id -> its colorScale domain, from DatatableControl's own useMemo -- absent/no entry means that column isn't color-scaled (or has no domain to scale against yet). */
+export type ColorScaleDomains = Map<string, ColorScaleDomain>
 
 /**
  * A column's filter control, rendered inside its own header (REUI's
@@ -301,29 +374,45 @@ export function buildColumns<TData extends DatatableRow = DatatableRow>(
           ) : (
             content
           )
-        // Only touches layout (block/w-full, so the flash has a full-width
-        // box to color rather than just hugging the text) when the feature
-        // is on at all -- `changedCells` is only ever passed once
-        // component.signalOnUpdate is checked, so a table with it off keeps
-        // its exact pre-existing inline/alignStyle-only cell markup.
-        // transition-colors alone (no separate "flash" class/keyframes) does
-        // the fade: bg-warning is only present while this cell's key is in
-        // changedCells, so its removal a beat later animates back to
-        // transparent instead of snapping.
+        // Only touches layout (block/w-full, so the flash/color-scale has a
+        // full-width box to color rather than just hugging the text) when
+        // either feature is actually in play for this cell -- a table with
+        // both off keeps its exact pre-existing inline/alignStyle-only cell
+        // markup. transition-colors alone (no separate "flash" class/
+        // keyframes) does the fade: the flash color class is only present
+        // while this cell's key is in changedCells, so its removal a beat
+        // later animates back to transparent instead of snapping (and, on a
+        // color-scaled column, back to the persistent scale color below
+        // rather than fully transparent).
         const signalEnabled = options?.changedCells !== undefined
-        const isFlashing = options?.changedCells?.has(`${(row.original as DatatableRow).id}::${path}`)
-        const flashClass = signalEnabled ? `block w-full transition-colors duration-1000 ${isFlashing ? 'bg-warning/40' : ''}` : undefined
+        const direction = options?.changedCells?.get(`${(row.original as DatatableRow).id}::${path}`)
+        // A color scale is a persistent inline background, which would
+        // otherwise always sit on top of (and hide) the flash's own
+        // background class -- skip it for the instant a cell is actually
+        // flashing so the flash still shows, reverting to the scale color
+        // once diffChangedCells' timeout clears.
+        const scaleStyle = direction ? undefined : colorScaleStyle(value, col, options?.colorScaleDomains?.get(col.id))
+        const needsColorBox = signalEnabled || !!scaleStyle
+        const colorBoxClass = needsColorBox
+          ? `block w-full transition-colors duration-1000 ${direction ? signalFlashClass(direction, options?.signalMode ?? 'neutral') : ''}`
+          : undefined
+        // Precedence: a hand-typed Style can override Align (e.g. its own
+        // text-align), but Color scale's computed background always wins
+        // over a stray background/background-color in Style -- so the two
+        // computed features (this and the signal flash above) can't be
+        // silently defeated by an unrelated Style string.
+        const cellStyle = { ...alignStyle(col.align), ...parseCssText(col.style ?? ''), ...scaleStyle }
         if (!clickable)
           return (
-            <span className={flashClass} style={alignStyle(col.align)}>
+            <span className={colorBoxClass} style={cellStyle}>
               {inner}
             </span>
           )
         return (
           <button
             type="button"
-            className={['text-primary hover:underline', flashClass].filter(Boolean).join(' ')}
-            style={alignStyle(col.align)}
+            className={['text-primary hover:underline', colorBoxClass].filter(Boolean).join(' ')}
+            style={cellStyle}
             onClick={() => options!.onLinkedCellClick!(col, value, row.original)}
           >
             {inner}

@@ -17,16 +17,31 @@ export interface FieldSchema {
 }
 
 const COMMON: FieldSchema[] = [{ key: 'title', label: 'Title', type: 'text', help: 'May reference ${param}' }]
-const WEIGHT: FieldSchema = { key: 'weight', label: 'Weight', type: 'number', help: 'Flex weight among siblings' }
+const WEIGHT: FieldSchema = {
+  key: 'weight',
+  label: 'Weight',
+  type: 'number',
+  help: "Flex weight among siblings, or a fixed size (weight × ~320px) when the parent layout's Scrollable is on",
+}
 const DATA_BOUND: FieldSchema = { key: 'datastore', label: 'Datastore', type: 'select', dynamicOptions: 'datastores' }
+/** datatable/chart/pivot/plotly-chart/html/kpi/parameters only -- layout has its own equivalent, positive-sense `displayTitle`. */
+const HIDE_TITLE: FieldSchema = { key: 'hideTitle', label: 'Hide Title', type: 'checkbox' }
+/** Shared by layout (row/column of its children) and parameters (row/column of its own field list). */
+const DIRECTION: FieldSchema = { key: 'direction', label: 'Direction', type: 'select', options: ['horizontal', 'vertical'] }
 
 const LAYOUT: FieldSchema[] = [
   ...COMMON,
   { key: 'displayTitle', label: 'Display title', type: 'checkbox', defaultChecked: true },
   WEIGHT,
-  { key: 'direction', label: 'Direction', type: 'select', options: ['horizontal', 'vertical'] },
+  DIRECTION,
   { key: 'resizable', label: 'Resizable', type: 'checkbox' },
   { key: 'collapsible', label: 'Collapsible', type: 'checkbox', help: 'Adds a collapse toggle to each direct child' },
+  {
+    key: 'scrollable',
+    label: 'Scrollable',
+    type: 'checkbox',
+    help: 'Children keep a fixed size (their own Weight × ~320px) instead of being fit to the available space, and this layout scrolls (matching Direction) to reach the rest. Overrides Resizable',
+  },
 ]
 
 const TAB: FieldSchema[] = [
@@ -38,17 +53,26 @@ const TAB: FieldSchema[] = [
 const DATATABLE: FieldSchema[] = [
   ...COMMON,
   WEIGHT,
+  HIDE_TITLE,
   DATA_BOUND,
   { key: 'pagination', label: 'Pagination', type: 'pagination', options: ['10', '50', '100', '200', '1000'] },
   { key: 'filter', label: 'Filter', type: 'checkbox' },
   { key: 'footer', label: 'Footer', type: 'checkbox' },
   { key: 'stickyHeader', label: 'Sticky header', type: 'checkbox' },
+  { key: 'hideHeader', label: 'Hide header', type: 'checkbox', help: 'Also hides column filters and the resize/pin/move column menu, since those live in the header' },
   { key: 'resizableColumns', label: 'Resizable columns', type: 'checkbox' },
   { key: 'denseLayout', label: 'Dense layout', type: 'checkbox', defaultChecked: true },
   { key: 'stripedRows', label: 'Striped rows', type: 'checkbox' },
   { key: 'movableColumns', label: 'Movable columns', type: 'checkbox', help: 'Adds Move left/right to each column header\'s menu' },
   { key: 'cellLines', label: 'Cell lines', type: 'checkbox' },
-  { key: 'signalOnUpdate', label: 'Signal on Update', type: 'checkbox', help: "Dataset must include unique 'id' field" },
+  {
+    key: 'signalOnUpdate',
+    label: 'Signal on Update',
+    type: 'select',
+    options: ['neutral', 'green-up-red-down', 'red-up-green-down'],
+    noneLabel: 'Off',
+    help: "Dataset must include unique 'id' field. Directional modes color a numeric increase/decrease; a non-numeric change always flashes neutral (amber)",
+  },
   { key: 'transpose', label: 'Transpose', type: 'checkbox', help: 'Columns become rows and rows become columns. Display is capped to 10 rows. Footer totals, tree rows, grouping, filters and Signal on Update are not supported' },
   { key: 'transposeHeaderField', label: 'Transpose header field', type: 'text', help: 'Transpose only -- datastore field used as each column\'s header; blank shows #1, #2, ...' },
   { key: 'treeRows', label: 'Tree rows', type: 'checkbox' },
@@ -65,13 +89,22 @@ const DATATABLE_COLUMN: FieldSchema[] = [
   { key: 'dataType', label: 'Data type', type: 'select', options: ['str', 'number', 'datetime', 'date', 'badge'] },
   { key: 'dataFormat', label: 'Format', type: 'text', help: '"0,000.00" for numbers; "yyyy-MM-dd" / "yyyyMMdd HH:mm" for dates' },
   { key: 'humanReadable', label: 'Human Readable', type: 'checkbox', help: 'Data type=number only -- abbreviates as k/m/b (1234 -> 1.2k), overriding Format' },
+  {
+    key: 'colorScale',
+    label: 'Color scale',
+    type: 'select',
+    options: ['sequential', 'diverging'],
+    noneLabel: 'None',
+    help: 'Data type=number only -- persistently colors each cell by where its value falls in the column\'s range (low/mid/high). Diverging adds a midpoint color, for a column centered on zero/a target',
+  },
+  { key: 'colorScaleMin', label: 'Color scale min', type: 'number', help: 'Blank -- auto, from the lowest value currently loaded' },
+  { key: 'colorScaleMax', label: 'Color scale max', type: 'number', help: 'Blank -- auto, from the highest value currently loaded' },
   { key: 'widthMin', label: 'Min width', type: 'number' },
   { key: 'widthMax', label: 'Max width', type: 'number' },
   { key: 'align', label: 'Align', type: 'select', options: ['left', 'right', 'middle'] },
   { key: 'parameter', label: 'Sets parameter', type: 'text', help: 'Row click sets this panel parameter' },
   { key: 'filterType', label: 'Filter type', type: 'select', options: ['text', 'selector'], noneLabel: 'No filter' },
-  { key: 'style', label: 'Style', type: 'text' },
-  { key: 'stylePath', label: 'Style path', type: 'text' },
+  { key: 'style', label: 'Style', type: 'text', help: 'CSS declarations, e.g. "color: gray; font-weight: bold" -- applied to every cell in the column' },
   { key: 'totalExpession', label: 'Total', type: 'select', options: ['sum', 'avg', 'min', 'max'] },
   { key: 'pinnable', label: 'Pinnable', type: 'checkbox' },
   {
@@ -87,6 +120,7 @@ const DATATABLE_COLUMN: FieldSchema[] = [
 const CHART: FieldSchema[] = [
   ...COMMON,
   WEIGHT,
+  HIDE_TITLE,
   DATA_BOUND,
   { key: 'chartType', label: 'Chart type', type: 'select', options: ['line', 'bar', 'pie'] },
   { key: 'drilldownIds', label: 'Drilldowns', type: 'multiselect', dynamicOptions: 'drilldowns', help: 'Adds each to this control\'s right-click menu' },
@@ -104,6 +138,7 @@ const CHART_COLUMN: FieldSchema[] = [
 const PLOTLY_CHART: FieldSchema[] = [
   ...COMMON,
   WEIGHT,
+  HIDE_TITLE,
   DATA_BOUND,
   {
     key: 'plotlyConfig',
@@ -128,11 +163,20 @@ const PLOTLY_TRACE: FieldSchema[] = [
     key: 'xColumns',
     label: 'X columns',
     type: 'text',
-    help: "Wide data: comma-separated columns (or * for all but the Series field) -- column names become x and the matching row's values become y. Overrides X/Y field",
+    help: "Non-heatmap: wide data -- comma-separated columns (or * for all but the Series field) -- column names become x and the matching row's values become y. Overrides X/Y field. Heatmap: see Trace type",
   },
   { key: 'xField', label: 'X field', type: 'text', help: 'Datastore field path for the x axis' },
-  { key: 'yField', label: 'Y field', type: 'text', help: 'Datastore field path for the y axis (pie: values, with X as labels)' },
-  { key: 'traceType', label: 'Trace type', type: 'select', options: ['scatter', 'bar', 'pie', 'heatmap'], help: 'heatmap: X field = row label column, X columns (default *) = value columns shown on y; colors green (low) to red (high), override via Trace config colorscale' },
+  { key: 'yField', label: 'Y field', type: 'text', help: 'Datastore field path for the y axis (pie: values, with X as labels). Heatmap: set this to switch to long-format mode -- see Trace type' },
+  {
+    key: 'traceType',
+    label: 'Trace type',
+    type: 'select',
+    options: ['scatter', 'bar', 'pie', 'heatmap'],
+    help:
+      'heatmap, Y field blank (wide/pivoted data): X field = row label column, X columns (default *) = value columns shown on y. ' +
+      'heatmap, Y field set (long/tidy data, one row per x,y cell): X field/Y field = the x/y columns, X columns names the single z-value column (default: first column that is neither X field, Y field, nor Series field). ' +
+      'Either way, colors green (low) to red (high), override via Trace config colorscale',
+  },
   { key: 'traceMode', label: 'Mode', type: 'select', options: ['lines', 'markers', 'lines+markers'], help: 'scatter only' },
   { key: 'lineColor', label: 'Line color', type: 'text', help: 'CSS color, e.g. #17becf' },
   { key: 'lineWidth', label: 'Line width', type: 'number' },
@@ -151,6 +195,7 @@ const PLOTLY_TRACE: FieldSchema[] = [
 const HTML: FieldSchema[] = [
   ...COMMON,
   WEIGHT,
+  HIDE_TITLE,
   {
     key: 'body',
     label: 'Body',
@@ -164,6 +209,7 @@ const HTML: FieldSchema[] = [
 const KPI: FieldSchema[] = [
   ...COMMON,
   WEIGHT,
+  HIDE_TITLE,
   DATA_BOUND,
   { key: 'drilldownIds', label: 'Drilldowns', type: 'multiselect', dynamicOptions: 'drilldowns', help: 'Adds each to this control\'s right-click menu' },
   { key: 'linkIds', label: 'Links', type: 'multiselect', dynamicOptions: 'links', help: 'Adds each to this control\'s right-click menu' },
@@ -183,9 +229,19 @@ const KPI_COLUMN: FieldSchema[] = [
   { key: 'footerStyle', label: 'Footer style', type: 'text', help: 'CSS declarations -- overrides the default footer style' },
 ]
 
+const PARAMETERS: FieldSchema[] = [
+  ...COMMON,
+  WEIGHT,
+  HIDE_TITLE,
+  { ...DIRECTION, help: 'Arrangement of the parameter fields themselves. Unset behaves as vertical' },
+  { key: 'drilldownIds', label: 'Drilldowns', type: 'multiselect', dynamicOptions: 'drilldowns', help: 'Adds each to this control\'s right-click menu' },
+  { key: 'linkIds', label: 'Links', type: 'multiselect', dynamicOptions: 'links', help: 'Adds each to this control\'s right-click menu' },
+]
+
 const PIVOT: FieldSchema[] = [
   ...COMMON,
   WEIGHT,
+  HIDE_TITLE,
   DATA_BOUND,
   { key: 'rowTotals', label: 'Row grand total', type: 'checkbox', help: 'Adds a Grand Total column per value field, aggregating each row across every column' },
   { key: 'columnTotals', label: 'Column grand total', type: 'checkbox', help: 'Adds a Grand Total row, aggregating each column across every row' },
@@ -238,6 +294,7 @@ const SCHEMAS: Record<NodeType, FieldSchema[]> = {
   html: HTML,
   kpi: KPI,
   'kpi-column': KPI_COLUMN,
+  parameters: PARAMETERS,
 }
 
 export function schemaFor(type: NodeType): FieldSchema[] {

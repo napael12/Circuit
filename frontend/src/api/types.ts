@@ -98,34 +98,35 @@ export interface Datastore {
    */
   connection: string | null
   sql_def: string | null
+  /** source_type=query only. Supports ${param} the same way the serialized fields above do (Settings fallback, dotted keys included). */
   inline_sql: string
   row_limit: number | null
   /** Result cache term in seconds, keyed by datastore + all input parameters; null/0 = no caching. Cleared via POST /datastores/{id}/clear-cache/. */
   cache_seconds: number | null
   /**
    * source_type=serialized + access_type=s3: object key/path within the
-   * connection's bucket, used when object_url is blank. Supports ${param}.
+   * connection's bucket, used when object_url is blank. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included).
    */
   object_key: string
-  /** source_type=serialized + access_type=s3 only: a full object URL, tried instead of connection+object_key when set. Supports ${param}. */
+  /** source_type=serialized + access_type=s3 only: a full object URL, tried instead of connection+object_key when set. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included). */
   object_url: string
   /**
    * source_type=serialized: the collapsible "Body" override used for test/
    * troubleshooting -- when non-blank, parsed directly instead of actually
-   * fetching from access_type's configured source. Supports ${param}.
+   * fetching from access_type's configured source. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included).
    */
   body: string
-  /** source_type=serialized + access_type=http: the request URL, used as-is. Supports ${param}. */
+  /** source_type=serialized + access_type=http: the request URL, used as-is. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included). */
   data_url: string
   /** source_type=serialized + access_type=http only. */
   request_method: 'GET' | 'POST'
   /** source_type=serialized + access_type=http only: key -> value query/form params. Each value supports ${param}. */
   request_params: Record<string, string>
-  /** source_type=serialized + access_type=http only: raw request body (JSON/text/XML) for POST. Supports ${param}. */
+  /** source_type=serialized + access_type=http only: raw request body (JSON/text/XML) for POST. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included). */
   request_body: string
-  /** source_type=serialized + access_type=file only: a directory on the server's own filesystem. Supports ${param}. */
+  /** source_type=serialized + access_type=file only: a directory on the server's own filesystem. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included). */
   file_path: string
-  /** source_type=serialized + access_type=file only: filename and/or regex selecting one file within file_path. Supports ${param}. */
+  /** source_type=serialized + access_type=file only: filename and/or regex selecting one file within file_path. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included). */
   file_expression: string
   /** How raw content is turned into rows/columns -- see datastore/renderers.py. source_type=serialized only offers json/xml/delimited. */
   renderer_type: RendererType
@@ -386,17 +387,36 @@ export type NodeType =
   | 'html'
   | 'kpi'
   | 'kpi-column'
+  | 'parameters'
 
 export interface PanelNode {
   id: string
   type: NodeType
   title?: string // may contain ${param} -- see utils/panelTemplating.ts
+  /**
+   * datatable / chart / pivot / plotly-chart / html / kpi only -- hides the
+   * leaf control's own card-header title (LeafNode in PanelLayout.tsx).
+   * Unset/false shows it. Negative-sense (unlike layout's `displayTitle`)
+   * to match how it reads in the property panel. `title` itself is left
+   * alone -- still used for CSV export filenames, and plotly-chart's own
+   * in-canvas Plotly title also honors this flag so the two don't show the
+   * same text redundantly.
+   */
+  hideTitle?: boolean
   // --- layout ---
-  weight?: number // flex weight among siblings
+  weight?: number // flex weight among siblings; a fixed-size multiplier instead when `scrollable` is on -- see below
+  /** layout: row vs column for its children. parameters: same idea, for its own field list -- see ParametersControl.tsx. Undefined/unset behaves as 'horizontal' for layout, 'vertical' for parameters (each control's own natural default). */
   direction?: 'horizontal' | 'vertical'
   resizable?: boolean
   /** Each direct child gets a collapse/expand toggle, shrinking it to a thin strip when collapsed. */
   collapsible?: boolean
+  /**
+   * Children keep a fixed size (their own `weight` × a constant, instead of
+   * being flex-grown to fill the available space) and the container scrolls
+   * (along `direction`) to reach the ones that don't fit -- see
+   * PanelLayout.tsx's LayoutNode. Forces `resizable` off.
+   */
+  scrollable?: boolean
   /** layout only -- whether `title` renders. Undefined/unset behaves as checked (shown). */
   displayTitle?: boolean
   // --- tab ---
@@ -413,6 +433,8 @@ export interface PanelNode {
   filter?: boolean
   footer?: boolean
   stickyHeader?: boolean
+  /** datatable only -- omits the column header row (and its filter/resize/pin/move affordances) from the rendered table entirely. */
+  hideHeader?: boolean
   /** datatable only -- lets a column's header be dragged to resize it. Undefined/unset behaves as unchecked (not resizable). */
   resizableColumns?: boolean
   /** datatable only -- tighter row/cell padding. Undefined/unset behaves as checked (dense), matching this control's pre-existing always-on behavior. */
@@ -422,8 +444,19 @@ export interface PanelNode {
   /** datatable only -- adds Move left/right controls to each column header's menu. */
   movableColumns?: boolean
   cellLines?: boolean
-  /** datatable only -- briefly flashes a cell's background when its value changes between data updates. Requires each row's dataset to include a unique 'id' field -- rows are diffed by that field, so rows without one (or with a non-unique/positional fallback id) can misfire on reorder/refetch. */
-  signalOnUpdate?: boolean
+  /**
+   * datatable only -- briefly flashes a cell's background when its value
+   * changes between data updates. Requires each row's dataset to include a
+   * unique 'id' field -- rows are diffed by that field, so rows without one
+   * (or with a non-unique/positional fallback id) can misfire on
+   * reorder/refetch. 'neutral' flashes amber regardless of direction;
+   * 'green-up-red-down'/'red-up-green-down' color a numeric increase/
+   * decrease accordingly and fall back to the neutral amber for a changed
+   * value that isn't numeric (e.g. a string/date/badge column). `true` is
+   * legacy shorthand for 'neutral' -- a dashboard saved before these modes
+   * existed.
+   */
+  signalOnUpdate?: boolean | 'neutral' | 'green-up-red-down' | 'red-up-green-down'
   /** datatable only -- display-only transpose: each column becomes a row and each (first 10) source row a column. Footer totals, tree rows, grouping, filters and Signal on Update are ignored while on. */
   transpose?: boolean
   /** datatable transpose only -- datastore field whose value heads each transposed column. Blank -> "#1", "#2", ... */
@@ -448,6 +481,18 @@ export interface PanelNode {
   dataFormat?: string
   /** dataType=number only -- abbreviates per thousand/million/billion (1234 -> "1.2k", 2500000000 -> "2.5b"), overriding dataFormat's pattern. */
   humanReadable?: boolean
+  /**
+   * datatable-column, dataType=number only -- persistently colors each
+   * cell's background by where its value falls in the column's range
+   * (Excel-style conditional formatting; distinct from signalOnUpdate's
+   * transient flash on a value *changing*). 'sequential' interpolates a
+   * fixed low->high color pair; 'diverging' adds a midpoint color, useful
+   * for a column centered on zero/a target. Unset/'none' -- no coloring.
+   */
+  colorScale?: 'none' | 'sequential' | 'diverging'
+  /** colorScale only -- fixes the low/high end of the range instead of auto-computing it from the currently loaded rows. Either may be left unset to auto-compute just that end. */
+  colorScaleMin?: number
+  colorScaleMax?: number
   widthMin?: number
   widthMax?: number
   align?: 'left' | 'right' | 'middle'
@@ -455,8 +500,8 @@ export interface PanelNode {
   parameter?: string
   /** 'text' -- free-text substring match. 'selector' -- checkbox list of the column's distinct values, OR'd together. */
   filterType?: 'text' | 'selector'
+  /** datatable-column only -- CSS declarations ("color: gray; font-weight: bold") applied to every cell in the column, same free-form convention as kpi-column's headerStyle/bodyStyle/footerStyle (see utils/panelFormat.ts's parseCssText). */
   style?: string
-  stylePath?: string
   totalExpession?: 'sum' | 'avg' | 'min' | 'max'
   pinnable?: boolean
   /** datatable-column only -- excludes this column from the rendered table (header/cells/footer) when checked. */
@@ -512,7 +557,17 @@ export interface PanelNode {
   series?: string
   /** plotly-trace: datastore column `series` is matched against. Blank -> 'series'. */
   seriesField?: string
-  /** plotly-trace: wide-data mode -- comma-separated datastore columns (or '*' for every column except seriesField) plotted with the column names as x and the first matching row's values as y. Overrides xField/yField. */
+  /**
+   * plotly-trace, non-heatmap types: wide-data mode -- comma-separated datastore columns (or '*'
+   * for every column except seriesField) plotted with the column names as x and the first
+   * matching row's values as y. Overrides xField/yField.
+   *
+   * plotly-trace, traceType=heatmap: yField unset -> wide/pivoted format, same column list/'*' as
+   * above, but the column names become the y-axis categories and each row's values become z.
+   * yField set -> long/tidy format (one row per (x, y) cell already) -- xColumns instead names the
+   * single z-value column; blank/'*' defaults to the first column that's neither xField, yField,
+   * nor seriesField.
+   */
   xColumns?: string
   /** plotly-trace: datastore field paths for the x / y axes. */
   xField?: string

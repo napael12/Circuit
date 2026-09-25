@@ -133,7 +133,7 @@
                 ],
                 "datastore": "exchange-prices-feed",
                 "cellLines": true,
-                "signalOnUpdate": true
+                "signalOnUpdate": "green-up-red-down"
               }
             ],
             "tabStyle": "line"
@@ -146,7 +146,7 @@
   "created_at": "2026-09-09T03:45:42.872373Z",
   "created_by": 1,
   "created_by_username": "admin",
-  "updated_at": "2026-09-18T17:29:47.399540Z",
+  "updated_at": "2026-09-25T17:53:34.602392Z",
   "updated_by": 1,
   "updated_by_username": "admin",
   "last_accessed_at": null,

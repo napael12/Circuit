@@ -16,7 +16,7 @@ set "URL=http://localhost:5173/api/v1/datastores/exchange-prices-feed/push"
 curl -sS -X POST "%URL%" ^
   -H "X-API-Key: %API_KEY%" ^
   -H "Content-Type: application/json" ^
-  -d "[{\"id\":1,\"symbol\":\"NFLX\",\"price\":\"83.25\"},{\"id\":2,\"symbol\":\"AMZN\",\"price\":\"259.52\"},{\"id\":3,\"symbol\":\"AAPL\",\"price\":\"318.98\"},{\"id\":4,\"symbol\":\"META\",\"price\":\"616.77\"},{\"id\":5,\"symbol\":\"GOOGL\",\"price\":\"338.46\"}]"
+  -d "[{\"id\":1,\"symbol\":\"NFLX\",\"price\":\"83.25\"},{\"id\":2,\"symbol\":\"AMZN\",\"price\":\"259.52\"},{\"id\":3,\"symbol\":\"AAPL\",\"price\":\"318.98\"},{\"id\":4,\"symbol\":\"META\",\"price\":\"643.77\"},{\"id\":5,\"symbol\":\"GOOGL\",\"price\":\"336.46\"}]"
 
 echo.
 endlocal

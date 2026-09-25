@@ -71,19 +71,23 @@ export function ParametersDialog({ open, onClose, parameters, datastores }: Prop
   )
 }
 
-function ParamField({
+/** Exported for ParametersControl.tsx (an inline, always-applied alternative to this dialog's own draft+Apply form) -- same field-type-per-parameter logic (plain input, single-column select, or a multi-column lookup table), reused rather than duplicated. */
+export function ParamField({
   param,
   datastores,
+  previewMode,
   value,
   onChange,
 }: {
   param: PanelParameter
   datastores: PanelDatastoreRef[]
+  /** Editor's Preview tab for an in-progress (possibly unsaved) panel -- see ControlProps. Unset/false everywhere this dialog itself renders, which isn't yet preview-mode-aware. */
+  previewMode?: boolean
   value: string
   onChange: (value: string) => void
 }) {
   const panelId = usePanelId()
-  const { data } = useDatastore(param.datastore, datastores, {}, panelId)
+  const { data } = useDatastore(param.datastore, datastores, {}, panelId, previewMode)
 
   if (param.datastore) {
     const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : []

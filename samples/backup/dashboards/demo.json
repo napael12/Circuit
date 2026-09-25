@@ -163,17 +163,78 @@
                 "stickyHeader": true,
                 "drilldownIds": [
                   "drilldown_mtz4ixke2"
-                ]
+                ],
+                "hideHeader": false
+              }
+            ],
+            "tabStyle": "line"
+          },
+          {
+            "id": "tab_muhbpe8v1",
+            "type": "tab",
+            "title": "hist prices",
+            "weight": 2,
+            "position": "bottom",
+            "components": [
+              {
+                "id": "chart_mthxzlgj19",
+                "type": "chart",
+                "title": "Historical Prices",
+                "weight": 2,
+                "chartType": "line",
+                "columns": [
+                  {
+                    "id": "chart-column_mthxzlgj20",
+                    "type": "chart-column",
+                    "field": "date",
+                    "fieldDisplay": "Date",
+                    "dataType": "date",
+                    "components": []
+                  },
+                  {
+                    "id": "chart-column_mthxzlgj21",
+                    "type": "chart-column",
+                    "field": "open",
+                    "fieldDisplay": "Open",
+                    "dataType": "number",
+                    "components": []
+                  },
+                  {
+                    "id": "chart-column_mthxzlgj22",
+                    "type": "chart-column",
+                    "field": "high",
+                    "fieldDisplay": "High",
+                    "dataType": "number",
+                    "components": []
+                  },
+                  {
+                    "id": "chart-column_mthxzlgj23",
+                    "type": "chart-column",
+                    "field": "low",
+                    "fieldDisplay": "Low",
+                    "dataType": "number",
+                    "components": []
+                  },
+                  {
+                    "id": "chart-column_mthxzlgj24",
+                    "type": "chart-column",
+                    "field": "close",
+                    "fieldDisplay": "Close",
+                    "dataType": "number",
+                    "components": []
+                  }
+                ],
+                "datastore": "stock-selector"
               },
               {
-                "id": "datatable_mtz4mg7v23",
+                "id": "datatable_muhbqem82",
                 "type": "datatable",
-                "title": "Analysis - All Stocks",
+                "title": "Analysis",
                 "weight": 3,
                 "pagination": 10,
                 "columns": [
                   {
-                    "id": "datatable-column_mtz4mg7v24",
+                    "id": "datatable-column_muhbqem83",
                     "type": "datatable-column",
                     "field": "symbol",
                     "fieldDisplay": "Symbol",
@@ -182,7 +243,7 @@
                     "components": []
                   },
                   {
-                    "id": "datatable-column_mtz4mg7v25",
+                    "id": "datatable-column_muhbqem84",
                     "type": "datatable-column",
                     "field": "max_close",
                     "fieldDisplay": "Max Close",
@@ -192,17 +253,17 @@
                     "components": []
                   },
                   {
-                    "id": "datatable-column_mtz4mg7v26",
+                    "id": "datatable-column_muhbqem85",
                     "type": "datatable-column",
                     "field": "max_close_date",
                     "fieldDisplay": "Max Close Date",
                     "dataType": "datetime",
-                    "align": "left",
+                    "align": "right",
                     "dataFormat": "MM/dd/yy",
                     "components": []
                   },
                   {
-                    "id": "datatable-column_mtz4mg7v27",
+                    "id": "datatable-column_muhbqem86",
                     "type": "datatable-column",
                     "field": "min_close",
                     "fieldDisplay": "Min Close",
@@ -212,26 +273,27 @@
                     "components": []
                   },
                   {
-                    "id": "datatable-column_mtz4mg7v28",
+                    "id": "datatable-column_muhbqem87",
                     "type": "datatable-column",
                     "field": "min_close_date",
                     "fieldDisplay": "Min Close Date",
                     "dataType": "datetime",
-                    "align": "left",
-                    "components": []
+                    "align": "right",
+                    "components": [],
+                    "dataFormat": "yyyy-MM-dd"
                   },
                   {
-                    "id": "datatable-column_mtz4mg7v29",
+                    "id": "datatable-column_muhbqem88",
                     "type": "datatable-column",
                     "field": "last_date",
                     "fieldDisplay": "Last Date",
                     "dataType": "datetime",
-                    "align": "left",
+                    "align": "right",
                     "dataFormat": "yyyy-MM-dd",
                     "components": []
                   },
                   {
-                    "id": "datatable-column_mtz4mg7v30",
+                    "id": "datatable-column_muhbqem89",
                     "type": "datatable-column",
                     "field": "last_close",
                     "fieldDisplay": "Last Close",
@@ -241,7 +303,7 @@
                     "components": []
                   },
                   {
-                    "id": "datatable-column_mtz4mg7v31",
+                    "id": "datatable-column_muhbqem810",
                     "type": "datatable-column",
                     "field": "total_quotes",
                     "fieldDisplay": "Total Quotes",
@@ -251,59 +313,13 @@
                   }
                 ],
                 "datastore": "stock-analysis",
-                "cellLines": true
-              }
-            ]
-          },
-          {
-            "id": "chart_mthxzlgj19",
-            "type": "chart",
-            "title": "Historical Prices - ${stock}",
-            "weight": 2,
-            "chartType": "line",
-            "columns": [
-              {
-                "id": "chart-column_mthxzlgj20",
-                "type": "chart-column",
-                "field": "date",
-                "fieldDisplay": "Date",
-                "dataType": "date",
-                "components": []
-              },
-              {
-                "id": "chart-column_mthxzlgj21",
-                "type": "chart-column",
-                "field": "open",
-                "fieldDisplay": "Open",
-                "dataType": "number",
-                "components": []
-              },
-              {
-                "id": "chart-column_mthxzlgj22",
-                "type": "chart-column",
-                "field": "high",
-                "fieldDisplay": "High",
-                "dataType": "number",
-                "components": []
-              },
-              {
-                "id": "chart-column_mthxzlgj23",
-                "type": "chart-column",
-                "field": "low",
-                "fieldDisplay": "Low",
-                "dataType": "number",
-                "components": []
-              },
-              {
-                "id": "chart-column_mthxzlgj24",
-                "type": "chart-column",
-                "field": "close",
-                "fieldDisplay": "Close",
-                "dataType": "number",
-                "components": []
+                "cellLines": true,
+                "transpose": true,
+                "hideHeader": true,
+                "stripedRows": true
               }
             ],
-            "datastore": "stock-selector"
+            "tabStyle": "line"
           }
         ],
         "resizable": true,
@@ -418,7 +434,7 @@
   "created_at": "2026-08-08T16:51:15.029000Z",
   "created_by": 1,
   "created_by_username": "admin",
-  "updated_at": "2026-09-13T22:15:45.200667Z",
+  "updated_at": "2026-09-25T19:06:24.136332Z",
   "updated_by": 1,
   "updated_by_username": "admin",
   "last_accessed_at": null,

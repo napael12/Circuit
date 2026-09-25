@@ -9,12 +9,24 @@
     "parameters": [
       {
         "name": "stock",
-        "label": "stock",
+        "label": "Stock",
         "dataType": "str",
         "defaultValue": "NFLX",
         "hidden": false,
         "datastore": "stock-parameters",
         "selectorColumn": "symbol"
+      },
+      {
+        "name": "start_dt",
+        "label": "Start Date",
+        "dataType": "date",
+        "defaultValue": "2020-01-01"
+      },
+      {
+        "name": "end_dt",
+        "label": "End Date",
+        "dataType": "date",
+        "defaultValue": "2024-01-01"
       }
     ],
     "datastores": [
@@ -50,10 +62,18 @@
         "title": "Time Series",
         "components": [
           {
+            "id": "parameters_muhctoei1",
+            "type": "parameters",
+            "title": "Paramters",
+            "weight": 0.25,
+            "direction": "horizontal",
+            "hideTitle": true
+          },
+          {
             "id": "plotly-chart_ts",
             "type": "plotly-chart",
             "title": "${stock} Price History",
-            "weight": 1,
+            "weight": 1.5,
             "datastore": "stock-selector",
             "plotlyConfig": {
               "layout": {
@@ -164,9 +184,11 @@
                   "opacity": 0.6
                 }
               }
-            ]
+            ],
+            "hideTitle": true
           }
-        ]
+        ],
+        "scrollable": true
       }
     ],
     "drilldowns": [],
@@ -175,7 +197,7 @@
   "created_at": "2026-09-20T21:54:19.038802Z",
   "created_by": 1,
   "created_by_username": "admin",
-  "updated_at": "2026-09-20T22:32:48.970018Z",
+  "updated_at": "2026-09-25T19:41:18.227651Z",
   "updated_by": 1,
   "updated_by_username": "admin",
   "last_accessed_at": null,

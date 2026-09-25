@@ -116,3 +116,10 @@ export function useOpenParametersDialog(): { show: () => void; hasParameters: bo
   if (!ctx) throw new Error('useOpenParametersDialog must be used within a ParameterProvider')
   return { show: ctx.show, hasParameters: ctx.parameters.length > 0 }
 }
+
+/** The same pre-filtered (non-hidden) list the Parameters dialog itself shows -- see ParametersControl.tsx, an inline always-visible alternative to that dialog. */
+export function usePanelParameters(): PanelParameter[] {
+  const ctx = useContext(ParametersDialogContext)
+  if (!ctx) throw new Error('usePanelParameters must be used within a ParameterProvider')
+  return ctx.parameters
+}

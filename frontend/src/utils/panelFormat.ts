@@ -5,6 +5,8 @@
 // date/number library dependency -- dataFormat patterns are small enough to
 // hand-roll (confirmed no date-fns/dayjs in package.json).
 
+import type { CSSProperties } from 'react'
+
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
 function toDate(value: unknown): Date | null {
@@ -94,4 +96,24 @@ export function getFieldValue(row: Record<string, unknown>, fieldPath: string): 
     if (acc && typeof acc === 'object') return (acc as Record<string, unknown>)[key]
     return undefined
   }, row)
+}
+
+/**
+ * Best-effort CSS-declaration-list parser ("color: gray; font-size: 12px")
+ * -- a malformed declaration is skipped rather than throwing. Shared by
+ * kpi-column's headerStyle/bodyStyle/footerStyle (KpiControl.tsx) and
+ * datatable-column's style (datatableUtils.tsx), both a free-form CSS
+ * string applied to what they render.
+ */
+export function parseCssText(text: string): CSSProperties {
+  const style: Record<string, string> = {}
+  for (const decl of text.split(';')) {
+    const i = decl.indexOf(':')
+    if (i === -1) continue
+    const prop = decl.slice(0, i).trim()
+    const value = decl.slice(i + 1).trim()
+    if (!prop || !value) continue
+    style[prop.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())] = value
+  }
+  return style as CSSProperties
 }

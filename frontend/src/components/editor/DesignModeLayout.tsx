@@ -61,7 +61,9 @@ export function DesignModeLayout({ node }: Props) {
   const columns = node.columns ?? []
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-[10px] border border-dashed border-border bg-muted/20">
-      {node.title && <div className="border-b border-dashed border-border px-3.5 py-2.5 text-[0.9em] font-semibold">{node.title}</div>}
+      {node.title && !node.hideTitle && (
+        <div className="border-b border-dashed border-border px-3.5 py-2.5 text-[0.9em] font-semibold">{node.title}</div>
+      )}
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 p-3 text-center text-muted-foreground">
         <span className="text-[0.78em] font-medium tracking-wide uppercase">{TYPE_LABEL[node.type] ?? node.type}</span>
         <span className="text-[0.72em]">{node.datastore ? `datastore: ${node.datastore}` : 'no datastore'}</span>

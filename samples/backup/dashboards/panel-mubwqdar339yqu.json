@@ -23,7 +23,7 @@
       {
         "id": "root",
         "type": "layout",
-        "direction": "horizontal",
+        "direction": "vertical",
         "weight": 1,
         "components": [
           {
@@ -39,12 +39,24 @@
                 "xaxis": {
                   "title": {
                     "text": "Days to expiry"
-                  }
+                  },
+                  "type": "linear",
+                  "range": [
+                    3.711739062743266,
+                    63.28826093725674
+                  ],
+                  "autorange": true
                 },
                 "yaxis": {
                   "title": {
                     "text": "VIX"
-                  }
+                  },
+                  "type": "linear",
+                  "range": [
+                    -6.113974761129224,
+                    216.90611590679634
+                  ],
+                  "autorange": true
                 }
               }
             },
@@ -123,13 +135,23 @@
                   "title": {
                     "text": "Spot shock (index)"
                   },
-                  "type": "category"
+                  "type": "category",
+                  "range": [
+                    -0.5,
+                    8.5
+                  ],
+                  "autorange": true
                 },
                 "yaxis": {
                   "title": {
                     "text": "Vol shock"
                   },
-                  "type": "category"
+                  "type": "category",
+                  "range": [
+                    -0.5,
+                    12.5
+                  ],
+                  "autorange": true
                 }
               }
             },
@@ -158,9 +180,87 @@
               }
             ],
             "datastore": "spxvix-grid"
+          },
+          {
+            "id": "datatable_muhb7jgi1",
+            "type": "datatable",
+            "title": "spxvix terms",
+            "weight": 1,
+            "pagination": 100,
+            "columns": [
+              {
+                "id": "datatable-column_muhb8fhu8",
+                "type": "datatable-column",
+                "field": "index",
+                "fieldDisplay": "Stress",
+                "dataType": "str",
+                "align": "left"
+              },
+              {
+                "id": "datatable-column_muhb8fhu2",
+                "type": "datatable-column",
+                "field": "7",
+                "fieldDisplay": "7",
+                "dataType": "number",
+                "align": "right",
+                "humanReadable": true,
+                "colorScale": "sequential",
+                "colorScaleMin": 5,
+                "colorScaleMax": 250,
+                "widthMin": 40,
+                "widthMax": 80
+              },
+              {
+                "id": "datatable-column_muhb8fhu3",
+                "type": "datatable-column",
+                "field": "14",
+                "fieldDisplay": "14",
+                "dataType": "number",
+                "align": "right",
+                "humanReadable": true,
+                "style": "font-weight:bold"
+              },
+              {
+                "id": "datatable-column_muhb8fhu4",
+                "type": "datatable-column",
+                "field": "21",
+                "fieldDisplay": "21",
+                "dataType": "number",
+                "align": "right"
+              },
+              {
+                "id": "datatable-column_muhb8fhu5",
+                "type": "datatable-column",
+                "field": "30",
+                "fieldDisplay": "30",
+                "dataType": "number",
+                "align": "right"
+              },
+              {
+                "id": "datatable-column_muhb8fhu6",
+                "type": "datatable-column",
+                "field": "45",
+                "fieldDisplay": "45",
+                "dataType": "number",
+                "align": "right"
+              },
+              {
+                "id": "datatable-column_muhb8fhu7",
+                "type": "datatable-column",
+                "field": "60",
+                "fieldDisplay": "60",
+                "dataType": "number",
+                "align": "right"
+              }
+            ],
+            "datastore": "spxvix-terms",
+            "hideHeader": false,
+            "transpose": false,
+            "hideTitle": true
           }
         ],
-        "title": "SPX VIX"
+        "title": "SPX VIX",
+        "scrollable": true
       }
     ],
     "drilldowns": [],
@@ -169,7 +269,7 @@
   "created_at": "2026-09-22T00:06:46.440880Z",
   "created_by": 1,
   "created_by_username": "admin",
-  "updated_at": "2026-09-22T00:26:47.054275Z",
+  "updated_at": "2026-09-25T21:58:14.792545Z",
   "updated_by": 1,
   "updated_by_username": "admin",
   "last_accessed_at": null,

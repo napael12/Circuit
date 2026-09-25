@@ -18,11 +18,25 @@ import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
 
 const DEFAULT_LIMIT = 10
 
+/**
+ * Row limit + whatever the user has typed into the Parameters list,
+ * remembered per datastore (keyed by the `name` prop below) for as long as
+ * this browser tab/session lasts -- outlives both switching away from the
+ * Preview tab (DatastoreDialog's Tabs unmount inactive content, which would
+ * otherwise destroy this component's own state) and closing the whole
+ * dialog and reopening it later (which unmounts DatastoreDialog itself). Not
+ * meant to survive a real page reload -- it's scratch state for the preview
+ * tool, not saved data.
+ */
+const previewStateCache = new Map<string, { params: Record<string, string>; limit: number }>()
+/** Cache key for a not-yet-saved datastore (blank `name`) -- shared across every in-progress "New Datastore" preview, which is an acceptable minor overlap for scratch state. */
+const NEW_DATASTORE_KEY = '__new__'
+
 interface Props {
   /** Param names discovered from the query/action so the panel opens pre-populated. */
   initialParams: Record<string, string>
   onRun: (params: Record<string, string>, limit: number) => Promise<DatastorePreviewResult>
-  /** Base filename for "Export data (CSV)" -- defaults to "datastore-preview" when omitted. */
+  /** Base filename for "Export data (CSV)", and this preview's cache key (see previewStateCache) -- defaults to "datastore-preview" for CSV naming, and to NEW_DATASTORE_KEY for caching, when omitted. */
   name?: string
 }
 
@@ -33,14 +47,40 @@ interface Props {
  * a tab inside DatastoreDialog (global datastore edit+preview).
  */
 export function DatastorePreviewPanel({ initialParams, onRun, name }: Props) {
-  const [limit, setLimit] = useState(DEFAULT_LIMIT)
-  const [params, setParams] = useState<Record<string, string>>(initialParams)
+  const cacheKey = name || NEW_DATASTORE_KEY
+  const cached = previewStateCache.get(cacheKey)
+  const [limit, setLimit] = useState(cached?.limit ?? DEFAULT_LIMIT)
+  const [params, setParams] = useState<Record<string, string>>(cached?.params ?? initialParams)
   const [newParamName, setNewParamName] = useState('')
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<DatastorePreviewResult | null>(null)
   const [showJson, setShowJson] = useState(false)
 
-  useEffect(() => setParams(initialParams), [initialParams])
+  // Adds newly-discovered/default-value param names from the Edit tab (or
+  // an initial load) without ever removing or overwriting one already
+  // present -- unlike a flat `setParams(initialParams)`, this can't wipe out
+  // a value the user typed here, or an ad-hoc param they added below that
+  // Edit's own config doesn't know about.
+  useEffect(() => {
+    setParams((prev) => {
+      const merged = { ...prev }
+      let changed = false
+      for (const [k, v] of Object.entries(initialParams)) {
+        if (!(k in merged)) {
+          merged[k] = v
+          changed = true
+        }
+      }
+      return changed ? merged : prev
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialParams])
+
+  // Keeps the cache current so the next mount (another tab switch, or the
+  // dialog being reopened) picks up right where this one left off.
+  useEffect(() => {
+    previewStateCache.set(cacheKey, { params, limit })
+  }, [cacheKey, params, limit])
 
   const run = async () => {
     setRunning(true)

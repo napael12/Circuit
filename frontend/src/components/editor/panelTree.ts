@@ -32,7 +32,8 @@ export function childrenOf(node: PanelNode): PanelNode[] {
   return COLUMN_CHILD_TYPES.includes(node.type) ? (node.columns ?? []) : (node.components ?? [])
 }
 
-function withChildren(node: PanelNode, children: PanelNode[]): PanelNode {
+/** Exported alongside `childrenOf` for the same reason -- callers that need to rebuild a node's children (e.g. EditorPage's "Move To" wrap) without duplicating the datatable/chart/pivot/kpi `columns` vs `components` branching. */
+export function withChildren(node: PanelNode, children: PanelNode[]): PanelNode {
   return COLUMN_CHILD_TYPES.includes(node.type) ? { ...node, columns: children } : { ...node, components: children }
 }
 
@@ -40,9 +41,9 @@ function withChildren(node: PanelNode, children: PanelNode[]): PanelNode {
 export function childTypesFor(type: NodeType): NodeType[] {
   switch (type) {
     case 'layout':
-      return ['layout', 'tab', 'datatable', 'chart', 'pivot', 'plotly-chart', 'html', 'kpi']
+      return ['layout', 'tab', 'datatable', 'chart', 'pivot', 'plotly-chart', 'html', 'kpi', 'parameters']
     case 'tab':
-      return ['layout', 'datatable', 'chart', 'pivot', 'plotly-chart', 'html', 'kpi']
+      return ['layout', 'datatable', 'chart', 'pivot', 'plotly-chart', 'html', 'kpi', 'parameters']
     case 'datatable':
       return ['datatable-column']
     case 'chart':
@@ -189,6 +190,7 @@ const NODE_TYPES: NodeType[] = [
   'html',
   'kpi',
   'kpi-column',
+  'parameters',
 ]
 
 /** Type guard for clipboard/pasted JSON -- see EditorPage.tsx's paste handler. */
@@ -280,6 +282,8 @@ export function defaultNodeFor(type: NodeType, id: string): PanelNode {
       return { id, type, title: id, weight: 1, body: '<p>Hello, ${param1}!</p>' }
     case 'kpi':
       return { id, type, title: id, weight: 1, columns: [] }
+    case 'parameters':
+      return { id, type, title: id, weight: 1, direction: 'vertical' }
     case 'datatable-column':
     case 'chart-column':
       return { id, type, field: '', fieldDisplay: id, dataType: 'str' }

@@ -1,4 +1,3 @@
-import type { CSSProperties } from 'react'
 import { useMemo } from 'react'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -9,7 +8,7 @@ import type { PanelNode } from '../../api/types'
 import { useDatastore } from '../../hooks/useDatastore'
 import { useTitleText } from '../../hooks/useTitleText'
 import { downloadCsv, rowsToCsv, sanitizeFilename } from '../../utils/csv'
-import { formatValue } from '../../utils/panelFormat'
+import { formatValue, parseCssText } from '../../utils/panelFormat'
 import { substituteParams } from '../../utils/panelTemplating'
 import { discoverTemplateVars } from '../../utils/sqlParams'
 import { usePanelId, useParameterValues } from '../layout/ParameterContext'
@@ -40,20 +39,6 @@ function resolveExpression(expr: string | undefined, row: Record<string, unknown
     return value == null ? '' : String(value)
   }
   return substituteParams(expr, params)
-}
-
-/** Best-effort CSS-declaration-list parser ("color: gray; font-size: 12px") -- a malformed declaration is skipped rather than throwing. */
-function parseCssText(text: string): CSSProperties {
-  const style: Record<string, string> = {}
-  for (const decl of text.split(';')) {
-    const i = decl.indexOf(':')
-    if (i === -1) continue
-    const prop = decl.slice(0, i).trim()
-    const value = decl.slice(i + 1).trim()
-    if (!prop || !value) continue
-    style[prop.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())] = value
-  }
-  return style as CSSProperties
 }
 
 function KpiCard({ card, row, params }: { card: PanelNode; row: Record<string, unknown> | null; params: Record<string, string> }) {

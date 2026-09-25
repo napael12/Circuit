@@ -48,6 +48,7 @@ interface Props {
   onCopyNode: (id: string) => void
   onPasteNode: (targetId: string) => void
   onMoveNode: (id: string, edge: 'top' | 'bottom' | 'up' | 'down') => void
+  onMoveNodeInto: (id: string, wrapperType: 'layout' | 'tab') => void
   onViewSource: (id: string) => void
   onLoadColumns: (id: string) => void
   onLoadColumnsFromJson: (id: string) => void
@@ -91,6 +92,7 @@ export function ComponentTree({
   onCopyNode,
   onPasteNode,
   onMoveNode,
+  onMoveNodeInto,
   onViewSource,
   onLoadColumns,
   onLoadColumnsFromJson,
@@ -131,7 +133,7 @@ export function ComponentTree({
             isSelected={isSameSelection(selection, { kind: 'datastore', id: d.id })}
             onSelect={() => onSelect({ kind: 'datastore', id: d.id })}
             onDelete={() => onDeleteDatastore(d.id)}
-            onCopy={() => onCopyDatastore(d.id)}
+            onCopy={d.scope === 'local' ? () => onCopyDatastore(d.id) : undefined}
             onPaste={onPasteDatastore}
             onViewJson={() => onViewJsonDatastore(d.id)}
           />
@@ -169,6 +171,7 @@ export function ComponentTree({
           onCopy={onCopyNode}
           onPaste={onPasteNode}
           onMove={onMoveNode}
+          onMoveInto={onMoveNodeInto}
           onViewSource={onViewSource}
           onLoadColumns={onLoadColumns}
           onLoadColumnsFromJson={onLoadColumnsFromJson}
@@ -190,6 +193,7 @@ export function ComponentTree({
             onCopyNode={onCopyNode}
             onPasteNode={onPasteNode}
             onMoveNode={onMoveNode}
+            onMoveNodeInto={onMoveNodeInto}
             onViewSource={onViewSource}
             onLoadColumns={onLoadColumns}
             onLoadColumnsFromJson={onLoadColumnsFromJson}
@@ -221,6 +225,7 @@ function DrilldownBlock({
   onCopyNode,
   onPasteNode,
   onMoveNode,
+  onMoveNodeInto,
   onViewSource,
   onLoadColumns,
   onLoadColumnsFromJson,
@@ -236,6 +241,7 @@ function DrilldownBlock({
   onCopyNode: (id: string) => void
   onPasteNode: (targetId: string) => void
   onMoveNode: (id: string, edge: 'top' | 'bottom' | 'up' | 'down') => void
+  onMoveNodeInto: (id: string, wrapperType: 'layout' | 'tab') => void
   onViewSource: (id: string) => void
   onLoadColumns: (id: string) => void
   onLoadColumnsFromJson: (id: string) => void
@@ -287,6 +293,7 @@ function DrilldownBlock({
           onCopy={onCopyNode}
           onPaste={onPasteNode}
           onMove={onMoveNode}
+          onMoveInto={onMoveNodeInto}
           onViewSource={onViewSource}
           onLoadColumns={onLoadColumns}
           onLoadColumnsFromJson={onLoadColumnsFromJson}
@@ -353,7 +360,8 @@ function LeafRow({
   isSelected: boolean
   onSelect: () => void
   onDelete: () => void
-  onCopy: () => void
+  /** Omit to hide "Copy" entirely -- e.g. a global-scope datastore reference, which can't be duplicated as a second reference to the same shared row. */
+  onCopy?: () => void
   onPaste: () => void
   onViewJson: () => void
   viewJsonLabel?: string
@@ -374,7 +382,7 @@ function LeafRow({
     <ContextMenu>
       <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuItem onClick={onCopy}>Copy</ContextMenuItem>
+        {onCopy && <ContextMenuItem onClick={onCopy}>Copy</ContextMenuItem>}
         <ContextMenuItem onClick={onPaste}>Paste</ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem onClick={onViewJson}>{viewJsonLabel}</ContextMenuItem>
@@ -391,6 +399,7 @@ function NodeRow({
   node,
   depth,
   isRoot,
+  parentType,
   selection,
   expanded,
   onToggleExpand,
@@ -400,6 +409,7 @@ function NodeRow({
   onCopy,
   onPaste,
   onMove,
+  onMoveInto,
   onViewSource,
   onLoadColumns,
   onLoadColumnsFromJson,
@@ -407,6 +417,8 @@ function NodeRow({
   node: PanelNode
   depth: number
   isRoot?: boolean
+  /** This node's own parent's type -- undefined for a root (no parent). Decides which of "Move To > Layout/Tab" are valid: whichever of those two types childTypesFor(parentType) actually accepts as a child. */
+  parentType?: NodeType
   selection: Selection
   expanded: Record<string, boolean>
   onToggleExpand: (id: string) => void
@@ -416,6 +428,7 @@ function NodeRow({
   onCopy: (id: string) => void
   onPaste: (targetId: string) => void
   onMove: (id: string, edge: 'top' | 'bottom' | 'up' | 'down') => void
+  onMoveInto: (id: string, wrapperType: 'layout' | 'tab') => void
   onViewSource: (id: string) => void
   onLoadColumns: (id: string) => void
   onLoadColumnsFromJson: (id: string) => void
@@ -424,6 +437,12 @@ function NodeRow({
   const addableTypes = childTypesFor(node.type)
   const isOpen = expanded[node.id] !== false
   const isSelected = isSameSelection(selection, { kind: 'node', id: node.id })
+  // "Move To": wrap this node in a fresh layout/tab, in its own current spot. Only offered for
+  // whichever of layout/tab its own parent actually accepts as a child -- e.g. a node whose parent
+  // is itself a `tab` can be wrapped in a `layout` but not another `tab` (tabs can't nest directly),
+  // and a column-type node (datatable-column, plotly-trace, ...) gets neither -- its parent only
+  // ever accepts more of its own column type.
+  const wrapTargets = parentType ? (['layout', 'tab'] as const).filter((t) => childTypesFor(parentType).includes(t)) : []
   const canLoadColumns = node.type === 'datatable' || node.type === 'chart' || node.type === 'pivot' || node.type === 'kpi'
   // specs/kpi.md calls this action "Generate Cards" -- same buildColumnsFromSample mechanism as
   // every other control's "Load Columns", just user-facing wording that matches what a kpi's
@@ -495,6 +514,21 @@ function NodeRow({
           )}
           <ContextMenuItem onClick={() => onCopy(node.id)}>Copy</ContextMenuItem>
           <ContextMenuItem onClick={() => onPaste(node.id)}>Paste</ContextMenuItem>
+          {wrapTargets.length > 0 && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuSub>
+                <ContextMenuSubTrigger>Move To</ContextMenuSubTrigger>
+                <ContextMenuSubContent>
+                  {wrapTargets.map((t) => (
+                    <ContextMenuItem key={t} onClick={() => onMoveInto(node.id, t)}>
+                      {t === 'layout' ? 'Layout' : 'Tab'}
+                    </ContextMenuItem>
+                  ))}
+                </ContextMenuSubContent>
+              </ContextMenuSub>
+            </>
+          )}
           {!isRoot && (
             <>
               <ContextMenuSeparator />
@@ -522,6 +556,7 @@ function NodeRow({
             key={child.id}
             node={child}
             depth={depth + 1}
+            parentType={node.type}
             selection={selection}
             expanded={expanded}
             onToggleExpand={onToggleExpand}
@@ -531,6 +566,7 @@ function NodeRow({
             onCopy={onCopy}
             onPaste={onPaste}
             onMove={onMove}
+            onMoveInto={onMoveInto}
             onViewSource={onViewSource}
             onLoadColumns={onLoadColumns}
             onLoadColumnsFromJson={onLoadColumnsFromJson}

@@ -5,6 +5,7 @@ import { ChartControl } from './ChartControl'
 import { DatatableControl } from './DatatableControl'
 import { HtmlControl } from './HtmlControl'
 import { KpiControl } from './KpiControl'
+import { ParametersControl } from './ParametersControl'
 import { PivotControl } from './PivotControl'
 import { PlotlyChartControl } from './PlotlyChartControl'
 import type { ControlProps } from './types'
@@ -17,4 +18,5 @@ export const CONTROL_REGISTRY: Partial<Record<NodeType, ReactComponentType<Contr
   'plotly-chart': PlotlyChartControl,
   html: HtmlControl,
   kpi: KpiControl,
+  parameters: ParametersControl,
 }

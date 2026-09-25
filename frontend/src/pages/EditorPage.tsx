@@ -50,15 +50,18 @@ import { LoadColumnsDialog } from '../components/editor/LoadColumnsDialog'
 import { LoadColumnsFromJsonDialog } from '../components/editor/LoadColumnsFromJsonDialog'
 import { OpenPanelDialog } from '../components/editor/OpenPanelDialog'
 import { PanelJsonDialog } from '../components/editor/PanelJsonDialog'
+import { CloneDialog } from '../components/manager/CloneDialog'
 import { RoleMultiSelect } from '../components/manager/RoleMultiSelect'
 import {
   addChild,
   allRoots,
+  childrenOf,
   childTypesFor,
   defaultDrilldownFor,
   defaultLinkFor,
   defaultNodeFor,
   findNode,
+  findParent,
   findRootContaining,
   insertAfter,
   isPanelDatastoreRef,
@@ -72,6 +75,7 @@ import {
   replaceRoot,
   uniqueName,
   updateNode,
+  withChildren,
   type Selection,
 } from '../components/editor/panelTree'
 import { PropertyPanel } from '../components/editor/PropertyPanel'
@@ -168,6 +172,9 @@ export function EditorPage() {
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [openDialogOpen, setOpenDialogOpen] = useState(false)
   const [datastoreDialog, setDatastoreDialog] = useState<{ initial: PanelDatastoreRef | null } | null>(null)
+  // A local datastore copied to the clipboard, parsed and validated but not yet added -- pasteDatastore opens this
+  // instead of adding it directly, so the name can be chosen before it lands in the list (see CloneDialog below).
+  const [pasteDatastoreDraft, setPasteDatastoreDraft] = useState<PanelDatastoreRef | null>(null)
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null)
   const savedSnapshot = useRef(
     JSON.stringify({ name: '', slug: '', category: '', subcategory: '', description: '', content: BLANK_CONTENT, allowedRoles: [] as number[] }),
@@ -397,7 +404,9 @@ export function EditorPage() {
   }
   const copyDatastore = async (dsId: string) => {
     const ds = content.datastores.find((d) => d.id === dsId)
-    if (!ds) return
+    // ComponentTree already hides Copy for a global-scope row -- guarded again
+    // here in case this is ever reached another way.
+    if (!ds || ds.scope === 'global') return
     try {
       await navigator.clipboard.writeText(JSON.stringify(ds, null, 2))
       toast.success('Copied.')
@@ -412,8 +421,20 @@ export function EditorPage() {
       toast.error("Clipboard doesn't contain a datastore.")
       return
     }
-    const name = uniqueName(parsed.name, content.datastores.map((d) => d.name))
-    const fresh = { ...parsed, id: newId('ds'), name }
+    if (parsed.scope === 'global') {
+      toast.error("Global datastores can't be copied or pasted -- only local ones.")
+      return
+    }
+    // Opens the rename dialog rather than adding it straight away, so a
+    // colliding name is a deliberate choice, not a silent "-2" suffix.
+    setPasteDatastoreDraft(parsed)
+  }
+  const confirmPasteDatastore = async (name: string) => {
+    if (!pasteDatastoreDraft) return
+    if (content.datastores.some((d) => d.name === name)) {
+      throw new Error(`A datastore named "${name}" already exists.`)
+    }
+    const fresh = { ...pasteDatastoreDraft, id: newId('ds'), name }
     setContent((c) => ({ ...c, datastores: [...c.datastores, fresh] }))
     setSelection({ kind: 'datastore', id: fresh.id })
     toast.success('Pasted.')
@@ -448,6 +469,37 @@ export function EditorPage() {
       const nodeRoot = findRootContaining(c, nodeId)
       return nodeRoot ? replaceRoot(c, nodeRoot.id, moveNode(nodeRoot, nodeId, edge)) : c
     })
+  }
+  /**
+   * "Move To" (ComponentTree's NodeRow context menu): wraps a node in a fresh
+   * layout/tab, in the same spot among its own siblings -- the shortcut
+   * described as copy -> add layout|tab in that spot -> paste the control
+   * into it, done here as one atomic tree edit instead (no clipboard
+   * round-trip, and the moved node keeps its own id since it's a move, not a
+   * duplicate). NodeRow only offers this when `wrapperType` is actually a
+   * valid child of the node's own parent (see childTypesFor) -- a `tab`
+   * wrapper is never offered for a node whose parent is itself a `tab`
+   * (tabs can't nest directly), and neither is offered for a column-type
+   * node (a datatable/chart/pivot/kpi/plotly-chart's own -column/-trace
+   * children only ever accept another of their own kind).
+   */
+  const moveContentNodeInto = (nodeId: string, wrapperType: 'layout' | 'tab') => {
+    const nodeRoot = findRootContaining(content, nodeId)
+    const parent = nodeRoot ? findParent(nodeRoot, nodeId) : null
+    const target = nodeRoot ? findNode(nodeRoot, nodeId) : null
+    if (!nodeRoot || !parent || !target) return
+    const wrapper = withChildren({ ...defaultNodeFor(wrapperType, newId(wrapperType)), weight: target.weight }, [target])
+    setContent((c) => {
+      const freshRoot = findRootContaining(c, nodeId)
+      if (!freshRoot) return c
+      return replaceRoot(
+        c,
+        freshRoot.id,
+        updateNode(freshRoot, parent.id, (p) => withChildren(p, childrenOf(p).map((child) => (child.id === nodeId ? wrapper : child)))),
+      )
+    })
+    setSelection({ kind: 'node', id: wrapper.id })
+    toast.success(`Moved into a new ${wrapperType}.`)
   }
   const copyContentNode = async (nodeId: string) => {
     const node = findNodeInContent(content, nodeId)
@@ -778,6 +830,7 @@ export function EditorPage() {
               onCopyNode={copyContentNode}
               onPasteNode={pasteContentNode}
               onMoveNode={moveContentNode}
+              onMoveNodeInto={moveContentNodeInto}
               onViewSource={setViewSourceId}
               onLoadColumns={handleLoadColumns}
               onLoadColumnsFromJson={setJsonColumnsNodeId}
@@ -929,6 +982,16 @@ export function EditorPage() {
           connections={connections}
           onClose={() => setDatastoreDialog(null)}
           onSave={saveDatastoreRef}
+        />
+      )}
+
+      {pasteDatastoreDraft && (
+        <CloneDialog
+          title="Paste datastore"
+          label="Name"
+          suggestedName={uniqueName(pasteDatastoreDraft.name, content.datastores.map((d) => d.name))}
+          onClone={confirmPasteDatastore}
+          onClose={() => setPasteDatastoreDraft(null)}
         />
       )}
 

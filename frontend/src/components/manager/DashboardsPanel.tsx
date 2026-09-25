@@ -130,6 +130,28 @@ export function DashboardsPanel() {
         size: 220,
       },
       {
+        id: 'category',
+        accessorFn: (row) => row.category || '',
+        header: ({ column }) => (
+          <DataGridColumnHeader column={column} title="Category" filter={<TextColumnFilter column={column} placeholder="Filter category" />} />
+        ),
+        cell: ({ getValue }) => String(getValue() ?? ''),
+        enableColumnFilter: true,
+        filterFn: 'includesString',
+        size: 130,
+      },
+      {
+        id: 'subcategory',
+        accessorFn: (row) => row.subcategory || '',
+        header: ({ column }) => (
+          <DataGridColumnHeader column={column} title="Subcategory" filter={<TextColumnFilter column={column} placeholder="Filter subcategory" />} />
+        ),
+        cell: ({ getValue }) => String(getValue() ?? ''),
+        enableColumnFilter: true,
+        filterFn: 'includesString',
+        size: 130,
+      },
+      {
         id: 'updated_at',
         accessorFn: (row) => (row.updated_at ? new Date(row.updated_at).toLocaleString() : ''),
         header: ({ column }) => (

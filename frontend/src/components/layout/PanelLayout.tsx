@@ -23,6 +23,8 @@ interface PanelLayoutProps {
 const COLLAPSE_STRIP_SIZE = 20
 /** Floor (px) a resizable pane can be dragged down to, so it never gets squeezed to nothing. */
 const MIN_PANE_SIZE = 40
+/** scrollable layouts only -- a child's `weight` × this = its fixed width/height (px), instead of a flexGrow ratio. */
+const SCROLL_UNIT_PX = 320
 
 function loadJSON<T>(key: string, fallback: T): T {
   try {
@@ -48,21 +50,29 @@ export function PanelLayout(props: PanelLayoutProps) {
 }
 
 /**
- * A layout's children render along `direction`, optionally with two
+ * A layout's children render along `direction`, optionally with three
  * independent, per-instance-persisted behaviors:
  *  - `resizable`: a drag handle between every pair of currently-visible
  *    children, adjusting their relative flex weight (specs: currently a
  *    dead "Resizable" checkbox -- this is what actually wires it up).
  *  - `collapsible`: each child gets its own collapse/expand toggle,
  *    shrinking it to a thin strip and freeing its space to its siblings.
- * Both are keyed by the layout node's own id in localStorage, matching the
- * editor's own sidebar/tree resize persistence (hooks/useResizable.ts).
+ *  - `scrollable`: children keep a fixed size (`weight` × SCROLL_UNIT_PX,
+ *    instead of being flex-grown to fill the available space) and the
+ *    container scrolls along `direction` to reach the ones that don't fit.
+ *    Forces `resizable` off -- dragging to trade weight between two fixed-
+ *    size neighbors doesn't make sense the way it does when they're
+ *    flex-grown to fill a shared, fixed-size container.
+ * `resizable`/`collapsible` state is keyed by the layout node's own id in
+ * localStorage, matching the editor's own sidebar/tree resize persistence
+ * (hooks/useResizable.ts).
  */
 function LayoutNode({ node, datastores, selectedId, onSelect, previewMode }: PanelLayoutProps) {
   const direction = node.direction ?? 'horizontal'
   const children = node.components ?? []
   const title = useTitleText(node.title)
-  const resizable = !!node.resizable
+  const scrollable = !!node.scrollable
+  const resizable = !!node.resizable && !scrollable
   const collapsible = !!node.collapsible
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -127,7 +137,12 @@ function LayoutNode({ node, datastores, selectedId, onSelect, previewMode }: Pan
       {title && node.displayTitle !== false && <div className="flex-none text-[0.9em] font-semibold">{title}</div>}
       <div
         ref={containerRef}
-        className={cn('min-h-0 flex-1', direction === 'vertical' ? 'flex flex-col' : 'flex flex-row', !resizable && 'gap-3.5')}
+        className={cn(
+          'min-h-0 min-w-0 flex-1',
+          direction === 'vertical' ? 'flex flex-col' : 'flex flex-row',
+          !resizable && 'gap-3.5',
+          scrollable && (direction === 'vertical' ? 'overflow-y-auto' : 'overflow-x-auto'),
+        )}
       >
         {children.map((child, i) => {
           const isCollapsed = !!collapsedIds[child.id]
@@ -140,7 +155,13 @@ function LayoutNode({ node, datastores, selectedId, onSelect, previewMode }: Pan
             <Fragment key={child.id}>
               <div
                 className={cn('flex min-h-0 min-w-0', vertical ? 'flex-col' : 'flex-row')}
-                style={isCollapsed ? { flex: '0 0 auto' } : { flexGrow: weightOf(child), flexBasis: 0 }}
+                style={
+                  isCollapsed
+                    ? { flex: '0 0 auto' }
+                    : scrollable
+                      ? { flexGrow: 0, flexShrink: 0, ...(vertical ? { height: weightOf(child) * SCROLL_UNIT_PX } : { width: weightOf(child) * SCROLL_UNIT_PX }) }
+                      : { flexGrow: weightOf(child), flexBasis: 0 }
+                }
               >
                 {collapsible && (
                   <button
@@ -238,7 +259,7 @@ function LeafNode({ node, datastores, selectedId, onSelect, previewMode }: Panel
         isSelectable && (isSelected ? 'border-solid border-accent' : 'border-dashed border-border'),
       )}
     >
-      {title && <div className="border-b border-border px-3.5 py-2.5 text-[0.9em] font-semibold">{title}</div>}
+      {title && !node.hideTitle && <div className="border-b border-border px-3.5 py-2.5 text-[0.9em] font-semibold">{title}</div>}
       <div className="min-h-0 min-w-0 flex-1">
         {Control ? (
           <Control component={node} datastores={datastores} previewMode={previewMode} />

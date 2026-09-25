@@ -117,17 +117,26 @@ function buildTrace(mapping: TraceMapping, allRows: Record<string, unknown>[], o
     x: mapping.x ? rows.map((r) => getFieldValue(r, mapping.x!)) : [],
     y: mapping.y ? rows.map((r) => getFieldValue(r, mapping.y!)) : [],
   }
-  // Wide data: the column *names* are the x values and the (first) matching row's cells are the y values.
   if (type === 'heatmap') {
-    // Heatmap: x = each row's xField value, y = the column names (xColumns, '*' = every column but
-    // the x/series fields), z[j][i] = row i's value in column j.
-    const skip = new Set([mapping.x, mapping.seriesField || DEFAULT_SERIES_FIELD].filter(Boolean))
-    const columns = mapping.xColumns?.trim() && mapping.xColumns.trim() !== '*'
-      ? mapping.xColumns.split(',').map((c) => c.trim()).filter(Boolean)
-      : Object.keys(rows[0] ?? {}).filter((k) => !skip.has(k))
-    trace.x = mapping.x ? rows.map((r) => getFieldValue(r, mapping.x!)) : []
-    trace.y = columns
-    trace.z = columns.map((c) => rows.map((r) => getFieldValue(r, c)))
+    if (mapping.y) {
+      // Long format (tidy/unpivoted): one row per (x, y) cell already -- x and y are already
+      // set correctly above from mapping.x/mapping.y, so only z needs computing here. xColumns
+      // names the single value column (blank/'*' = the first column that's neither x, y, nor series).
+      const skip = new Set([mapping.x, mapping.y, mapping.seriesField || DEFAULT_SERIES_FIELD].filter(Boolean))
+      const zField = mapping.xColumns?.trim() && mapping.xColumns.trim() !== '*'
+        ? mapping.xColumns.trim()
+        : Object.keys(rows[0] ?? {}).find((k) => !skip.has(k))
+      trace.z = zField ? rows.map((r) => getFieldValue(r, zField)) : []
+    } else {
+      // Wide format (pivoted): x = each row's xField value (already set above), y = the column
+      // names (xColumns, '*' = every column but the x/series fields), z[j][i] = row i's value in column j.
+      const skip = new Set([mapping.x, mapping.seriesField || DEFAULT_SERIES_FIELD].filter(Boolean))
+      const columns = mapping.xColumns?.trim() && mapping.xColumns.trim() !== '*'
+        ? mapping.xColumns.split(',').map((c) => c.trim()).filter(Boolean)
+        : Object.keys(rows[0] ?? {}).filter((k) => !skip.has(k))
+      trace.y = columns
+      trace.z = columns.map((c) => rows.map((r) => getFieldValue(r, c)))
+    }
     trace.colorscale = HEATMAP_COLORSCALE
     delete trace.mode
     if (mapping.name === undefined) trace.name = ''
@@ -231,7 +240,9 @@ export function PlotlyChartControl({ component, datastores, previewMode }: Contr
 
   const builtTraces = traceMappings.map((mapping, i) => buildTrace(mapping, plottedRows, config.traces?.[i] ?? {}))
   const layout = deepMerge(
-    { title: { text: title }, autosize: true, margin: { t: 32, r: 16, b: 40, l: 48 }, font: { size: 11 } },
+    // component.hideTitle also hides this in-canvas Plotly title (fed from the same `title`),
+    // so the two never show the same text redundantly -- see LeafNode's own header in PanelLayout.tsx.
+    { title: { text: component.hideTitle ? '' : title }, autosize: true, margin: { t: 32, r: 16, b: 40, l: 48 }, font: { size: 11 } },
     config.layout ?? {},
   )
 

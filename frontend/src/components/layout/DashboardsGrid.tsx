@@ -68,6 +68,28 @@ export function DashboardsGrid({ rows, loading, favoriteIds, onToggleFavorite }:
         size: 220,
       },
       {
+        id: 'category',
+        accessorFn: (row) => row.category || '',
+        header: ({ column }) => (
+          <DataGridColumnHeader column={column} title="Category" filter={<TextColumnFilter column={column} placeholder="Filter category" />} />
+        ),
+        cell: ({ getValue }) => String(getValue() ?? ''),
+        enableColumnFilter: true,
+        filterFn: 'includesString',
+        size: 130,
+      },
+      {
+        id: 'subcategory',
+        accessorFn: (row) => row.subcategory || '',
+        header: ({ column }) => (
+          <DataGridColumnHeader column={column} title="Subcategory" filter={<TextColumnFilter column={column} placeholder="Filter subcategory" />} />
+        ),
+        cell: ({ getValue }) => String(getValue() ?? ''),
+        enableColumnFilter: true,
+        filterFn: 'includesString',
+        size: 130,
+      },
+      {
         id: 'updated_at',
         accessorFn: (row) => formatDate(row.updated_at),
         header: ({ column }) => (

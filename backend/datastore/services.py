@@ -18,7 +18,7 @@ from channels.layers import get_channel_layer
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils import timezone
 
-from breadboard.templating import substitute_template_vars
+from breadboard.templating import substitute_vars
 from connections.backends import HttpConnectionBackend, S3ConnectionBackend, get_backend
 
 from . import activity, cache as result_cache
@@ -28,14 +28,15 @@ from .renderers import render as render_content
 
 
 def substitute_config(value, params: dict):
-    """Recursively applies substitute_template_vars to every string in a
+    """Recursively applies substitute_vars to every string in a
     renderer_config value (e.g. root_path, a columns[].path, delimiter) --
     renderer_config is documented (Datastore.default_params) as supporting
     ${param} throughout, but render_content() itself just consumes the
-    config as-is, so every caller resolves it against the live params first.
+    config as-is, so every caller resolves it against the live params (then
+    Settings, dotted names included -- see substitute_vars) first.
     """
     if isinstance(value, str):
-        return substitute_template_vars(value, params)
+        return substitute_vars(value, params)
     if isinstance(value, dict):
         return {k: substitute_config(v, params) for k, v in value.items()}
     if isinstance(value, list):
@@ -44,7 +45,7 @@ def substitute_config(value, params: dict):
 
 
 def _fetch_serialized_http(ds: Datastore, params: dict) -> bytes | str:
-    url = substitute_template_vars(ds.data_url, params)
+    url = substitute_vars(ds.data_url, params)
     if not url:
         raise ValueError('No URL configured.')
     if ds.connection_id:
@@ -54,10 +55,10 @@ def _fetch_serialized_http(ds: Datastore, params: dict) -> bytes | str:
     else:
         kwargs = {'headers': {}, 'params': {}, 'auth': None, 'timeout': 30}
 
-    request_params = {k: substitute_template_vars(str(v), params) for k, v in (ds.request_params or {}).items()}
+    request_params = {k: substitute_vars(str(v), params) for k, v in (ds.request_params or {}).items()}
     query_params = {**kwargs['params'], **request_params}
     method = ds.request_method or Datastore.METHOD_GET
-    data = substitute_template_vars(ds.request_body, params) if method == Datastore.METHOD_POST else None
+    data = substitute_vars(ds.request_body, params) if method == Datastore.METHOD_POST else None
 
     resp = requests.request(
         method, url, params=query_params or None, data=data,
@@ -95,7 +96,7 @@ def _parse_s3_url(url: str) -> tuple[str, str] | None:
 
 
 def _fetch_serialized_s3(ds: Datastore, params: dict) -> bytes | str:
-    object_url = substitute_template_vars(ds.object_url, params)
+    object_url = substitute_vars(ds.object_url, params)
     if object_url:
         parsed = _parse_s3_url(object_url)
         if parsed and ds.connection_id:
@@ -115,7 +116,7 @@ def _fetch_serialized_s3(ds: Datastore, params: dict) -> bytes | str:
     backend = get_backend(ds.connection)
     assert isinstance(backend, S3ConnectionBackend)
 
-    key = substitute_template_vars(ds.object_key, params)
+    key = substitute_vars(ds.object_key, params)
     parsed_key = _parse_s3_url(key) if key else None
     if parsed_key:
         bucket, key = parsed_key
@@ -132,10 +133,10 @@ def _fetch_serialized_s3(ds: Datastore, params: dict) -> bytes | str:
 
 
 def _fetch_serialized_file(ds: Datastore, params: dict) -> bytes | str:
-    directory = substitute_template_vars(ds.file_path, params)
+    directory = substitute_vars(ds.file_path, params)
     if not directory:
         raise ValueError('No file path configured.')
-    expression = substitute_template_vars(ds.file_expression, params) or ''
+    expression = substitute_vars(ds.file_expression, params) or ''
 
     exact = os.path.join(directory, expression) if expression else None
     if exact and os.path.isfile(exact):
@@ -157,7 +158,7 @@ def _fetch_serialized_file(ds: Datastore, params: dict) -> bytes | str:
 
 
 def _fetch_serialized(ds: Datastore, params: dict) -> list[dict]:
-    override = substitute_template_vars(ds.body, params)
+    override = substitute_vars(ds.body, params)
     if override:
         raw = override
     elif ds.access_type == Datastore.ACCESS_HTTP:
@@ -199,7 +200,7 @@ def _run_uncached(ds: Datastore, merged_params: dict, row_limit: int | None):
         # ${name} is a literal text substitution (see breadboard.templating),
         # applied ahead of SQLAlchemy's own :name bound-parameter handling in
         # execute_query -- the two syntaxes can coexist in the same query.
-        sql_text = substitute_template_vars(ds.sql_text(), merged_params)
+        sql_text = substitute_vars(ds.sql_text(), merged_params)
         return execute_query(ds.connection, sql_text, merged_params, limit)
 
     if ds.source_type == Datastore.SOURCE_SERIALIZED:
