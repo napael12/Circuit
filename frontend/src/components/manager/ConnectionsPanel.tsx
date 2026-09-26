@@ -169,39 +169,44 @@ export function ConnectionsPanel({ roles }: { roles: Role[] }) {
       {
         id: '__actions',
         header: '',
-        size: 60,
+        size: 84,
         cell: ({ row }) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-xs" aria-label="More actions">
-                <MoreHorizontal />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[180px]">
-              <DropdownMenuItem onClick={() => handleTest(row.original)}>
-                <Network />
-                Test connection
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setEditing(row.original)}>
-                <Pencil />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setCloneTarget(row.original)}>
-                <Copy />
-                Clone
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => downloadJson([row.original], `connection-${row.original.id}.json`)}>
-                <Download />
-                Export JSON
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={() => handleDelete(row.original.id)}>
-                <Trash2 />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center justify-end gap-0.5">
+            <Button variant="ghost" size="icon-xs" aria-label="Edit" title="Edit" onClick={() => setEditing(row.original)}>
+              <Pencil />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-xs" aria-label="More actions">
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[180px]">
+                <DropdownMenuItem onClick={() => handleTest(row.original)}>
+                  <Network />
+                  Test connection
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setEditing(row.original)}>
+                  <Pencil />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setCloneTarget(row.original)}>
+                  <Copy />
+                  Clone
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => downloadJson([row.original], `connection-${row.original.id}.json`)}>
+                  <Download />
+                  Export JSON
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={() => handleDelete(row.original.id)}>
+                  <Trash2 />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         ),
       },
     ],

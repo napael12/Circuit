@@ -191,50 +191,61 @@ export function DatastoresPanel({ connections, roles }: Props) {
       {
         id: '__actions',
         header: '',
-        size: 60,
+        size: 84,
         cell: ({ row }) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-xs" aria-label="More actions">
-                <MoreHorizontal />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[180px]">
-              <DropdownMenuItem onClick={() => setEditing({ datastore: row.original, tab: 'preview' })}>
-                <Play />
-                Preview
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setEditing({ datastore: row.original, tab: 'edit' })}>
-                <Pencil />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setCloneTarget(row.original)}>
-                <Copy />
-                Clone
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() =>
-                  api
-                    .post(`/datastores/${row.original.id}/clear-cache/`)
-                    .then(() => toast.success('Cache cleared.'))
-                    .catch((err) => toast.error(String(err)))
-                }
-              >
-                <Eraser />
-                Clear cache
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => downloadJson([row.original], `datastore-${row.original.id}.json`)}>
-                <Download />
-                Export JSON
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={() => handleDelete(row.original.id)}>
-                <Trash2 />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center justify-end gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Edit"
+              title="Edit"
+              onClick={() => setEditing({ datastore: row.original, tab: 'edit' })}
+            >
+              <Pencil />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-xs" aria-label="More actions">
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[180px]">
+                <DropdownMenuItem onClick={() => setEditing({ datastore: row.original, tab: 'preview' })}>
+                  <Play />
+                  Preview
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setEditing({ datastore: row.original, tab: 'edit' })}>
+                  <Pencil />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setCloneTarget(row.original)}>
+                  <Copy />
+                  Clone
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() =>
+                    api
+                      .post(`/datastores/${row.original.id}/clear-cache/`)
+                      .then(() => toast.success('Cache cleared.'))
+                      .catch((err) => toast.error(String(err)))
+                  }
+                >
+                  <Eraser />
+                  Clear cache
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadJson([row.original], `datastore-${row.original.id}.json`)}>
+                  <Download />
+                  Export JSON
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={() => handleDelete(row.original.id)}>
+                  <Trash2 />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         ),
       },
     ],

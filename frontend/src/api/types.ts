@@ -553,38 +553,60 @@ export interface PanelNode {
    */
   plotlyConfig?: unknown
   // --- plotly-trace (child of plotly-chart; its display name is `fieldDisplay`, `hidden` omits it from the plot) ---
-  /** plotly-trace: value matched against the datastore's `series` column -- only rows whose seriesField value equals it feed this trace. Blank uses the entire dataset. */
-  series?: string
-  /** plotly-trace: datastore column `series` is matched against. Blank -> 'series'. */
-  seriesField?: string
   /**
-   * plotly-trace, non-heatmap types: wide-data mode -- comma-separated datastore columns (or '*'
-   * for every column except seriesField) plotted with the column names as x and the first
-   * matching row's values as y. Overrides xField/yField.
+   * plotly-trace: this trace's Plotly object, authored close to verbatim as
+   * JSON.parse output (plain objects/arrays/primitives, never executed as
+   * code) -- any property, for any of the registered trace types ('bar',
+   * 'box', 'candlestick', 'heatmap', 'histogram', 'pie', 'scatter',
+   * 'surface'; anything else falls back to 'scatter'). Two template
+   * conventions, applied by PlotlyChartControl.tsx's resolveTraceValue:
+   *   - A string value that's *only* "#columnName#" becomes a per-row array
+   *     of that datastore column's raw value (numbers stay numbers) -- what
+   *     every array-valued property uses: x, y, z, open/high/low/close,
+   *     labels, values, marker.size, marker.color, ...
+   *   - A string mixing "#columnName#" token(s) with other text becomes a
+   *     per-row array of strings, each row's copy of the template filled
+   *     in -- for a formatted per-point text/hovertext.
+   *   - Any other string gets ${param} substitution (unknown names left
+   *     as-is) and stays a scalar -- type, mode, name, a literal color, ...
+   * Two reserved top-level keys are read and stripped before the rest
+   * resolves, never passed to Plotly itself: `series` (${param}-substituted;
+   * only rows whose `seriesField` column equals it -- compared as strings --
+   * feed this trace, blank/absent plots the entire dataset) and
+   * `seriesField` (which column `series` is matched against, default
+   * 'series'). Deep-merged with plotlyConfig.traces[i] (that wins) as a
+   * final override.
    *
-   * plotly-trace, traceType=heatmap: yField unset -> wide/pivoted format, same column list/'*' as
-   * above, but the column names become the y-axis categories and each row's values become z.
-   * yField set -> long/tidy format (one row per (x, y) cell already) -- xColumns instead names the
-   * single z-value column; blank/'*' defaults to the first column that's neither xField, yField,
-   * nor seriesField.
+   * heatmap/surface only: `x`/`y`/`z` are auto-reshaped (PlotlyChartControl
+   * .tsx's gridifyTrace) from flat, equal-length arrays -- one row per (x, y)
+   * cell, the same tidy shape every other trace type uses -- into the 2D
+   * z grid (rows of `y`, columns of `x`) these two trace types actually
+   * require; a `z` that's already a 2D array (a literal matrix authored by
+   * hand) is left alone.
    */
+  traceConfig?: unknown
+  /**
+   * plotly-trace, legacy only -- the pre-traceConfig form fields this node
+   * type used to be configured through. No longer editable (removed from
+   * the property schema); still typed and read by
+   * PlotlyChartControl.tsx's legacyTraceConfig so an already-saved trace
+   * using them keeps rendering (via a render-time synthesized traceConfig,
+   * never written back) until someone rewrites it as JSON by hand. The old
+   * wide/pivoted heatmap mode (yField unset) and non-heatmap xColumns pivot
+   * have no #column# equivalent and aren't carried over.
+   */
+  series?: string
+  seriesField?: string
   xColumns?: string
-  /** plotly-trace: datastore field paths for the x / y axes. */
   xField?: string
   yField?: string
-  /** plotly-trace: 'scatter' (default) | 'bar' | 'pie' | 'heatmap'. */
   traceType?: string
-  /** plotly-trace: 'lines' | 'markers' | 'lines+markers' (scatter only). */
   traceMode?: string
-  /** plotly-trace: datastore fields supplying per-point marker color / size / hover text. */
   colorField?: string
   sizeField?: string
   textField?: string
-  /** plotly-trace: literal CSS color / pixel width of the trace's line. */
   lineColor?: string
   lineWidth?: number
-  /** plotly-trace: declarative JSON deep-merged into this trace's Plotly object (JSON.parse output, never executed). */
-  traceConfig?: unknown
   // --- html ---
   /** html only -- HTML, sanitized (DOMPurify -- strips <script> and on* handlers) after ${param} substitution, then rendered. Admin-authored (IsAdminOrReadOnly gates editing), same trust boundary as editing any other control. May contain ${param}, substituted on load and whenever that parameter's value changes. */
   body?: string

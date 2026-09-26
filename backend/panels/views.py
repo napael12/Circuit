@@ -237,10 +237,29 @@ class PanelViewSet(ModelViewSet):
 
     @action(detail=True, permission_classes=[IsAuthenticated, DashboardRoleAccess])
     def download(self, request, pk=None):
-        """Download a panel as a standalone .json file (shareable dashboard export)."""
+        """Download a panel as a standalone .json file (shareable dashboard export).
+
+        Wraps `content` with the panel's own category/subcategory/description
+        (and name) so a round-trip through Export -> Import doesn't lose
+        them -- upload() below accepts both this shape and a bare
+        PanelContent object (an export from before this wrapper existed, or
+        the Editor's own "Edit JSON"/paste-JSON, which only ever deals in
+        the content tree). `slug` is deliberately left out: it's a unique
+        alias (Panel.slug), so carrying it over would collide the moment the
+        file is imported anywhere the original still exists -- same
+        reasoning as EditorPage.tsx's Save As, which leaves it blank on a
+        copy for the same reason.
+        """
         panel = self.get_object()
+        export = {
+            'name': panel.name,
+            'category': panel.category,
+            'subcategory': panel.subcategory,
+            'description': panel.description,
+            'content': panel.content,
+        }
         response = HttpResponse(
-            json.dumps(panel.content, indent=2), content_type='application/json'
+            json.dumps(export, indent=2), content_type='application/json'
         )
         response['Content-Disposition'] = f'attachment; filename="{panel.id}.json"'
         return response
@@ -295,11 +314,21 @@ class PanelViewSet(ModelViewSet):
         upload = request.FILES.get('file')
         if upload:
             try:
-                content = json.loads(upload.read())
+                payload = json.loads(upload.read())
             except (json.JSONDecodeError, UnicodeDecodeError) as exc:
                 return Response({'detail': f"Not a valid JSON file: {exc}"}, status=400)
         else:
-            content = request.data.get('content')
+            payload = request.data.get('content')
+
+        # download() above wraps the content tree with the panel's own
+        # category/subcategory/description (and name) so those round-trip
+        # through Export -> Import too -- detect that shape here (payload's
+        # own 'content' key is a nested dict) vs. a bare PanelContent object
+        # (an export from before that wrapper existed, or the Editor's own
+        # "Edit JSON"/paste-JSON, whose 'content' key is the *layout node
+        # list*, not a nested dict) and unwrap accordingly.
+        has_wrapper = isinstance(payload, dict) and isinstance(payload.get('content'), dict)
+        content = payload['content'] if has_wrapper else payload
 
         # Same shape check as the editor's own paste-JSON dialog (see
         # frontend isPanelContent) -- without this, an uploaded file that
@@ -324,14 +353,20 @@ class PanelViewSet(ModelViewSet):
                 status=400,
             )
 
-        panel, created = Panel.objects.update_or_create(
-            id=request.data['id'],
-            defaults={
-                'name': request.data.get('name', request.data['id']),
-                'content': content,
-                'updated_by': request.user,
-            },
-        )
+        defaults = {
+            'name': request.data.get('name', request.data['id']),
+            'content': content,
+            'updated_by': request.user,
+        }
+        # Only set from an actual wrapped export -- a bare/legacy-shape
+        # import never carried these, so leave an existing panel's own
+        # values alone rather than blanking them out.
+        if has_wrapper:
+            defaults['category'] = payload.get('category') or ''
+            defaults['subcategory'] = payload.get('subcategory') or ''
+            defaults['description'] = payload.get('description') or ''
+
+        panel, created = Panel.objects.update_or_create(id=request.data['id'], defaults=defaults)
         if created:
             panel.created_by = request.user
             panel.save(update_fields=['created_by'])

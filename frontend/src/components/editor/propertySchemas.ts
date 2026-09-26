@@ -144,51 +144,33 @@ const PLOTLY_CHART: FieldSchema[] = [
     key: 'plotlyConfig',
     label: 'Style config',
     type: 'json',
-    help: 'Declarative JSON merged into Plotly layout/traces -- { "layout": {...}, "traces": [{...}] } (no code execution)',
+    help:
+      'Declarative JSON merged into Plotly layout/traces -- { "layout": {...}, "traces": [{...}] } (no code execution). ' +
+      'layout may reference ${param} (e.g. a dynamic title); unknown ${name} is left as-is',
   },
   { key: 'drilldownIds', label: 'Drilldowns', type: 'multiselect', dynamicOptions: 'drilldowns', help: 'Adds each to this control\'s right-click menu' },
   { key: 'linkIds', label: 'Links', type: 'multiselect', dynamicOptions: 'links', help: 'Adds each to this control\'s right-click menu' },
 ]
 
 const PLOTLY_TRACE: FieldSchema[] = [
-  { key: 'fieldDisplay', label: 'Name', type: 'text', help: 'Legend name; blank falls back to the series/y field' },
-  { key: 'seriesField', label: 'Series field', type: 'text', help: "Datastore column holding series values; blank uses 'series'" },
-  {
-    key: 'series',
-    label: 'Series',
-    type: 'text',
-    help: 'Only rows whose Series field equals this value feed the trace. Blank uses the entire dataset',
-  },
-  {
-    key: 'xColumns',
-    label: 'X columns',
-    type: 'text',
-    help: "Non-heatmap: wide data -- comma-separated columns (or * for all but the Series field) -- column names become x and the matching row's values become y. Overrides X/Y field. Heatmap: see Trace type",
-  },
-  { key: 'xField', label: 'X field', type: 'text', help: 'Datastore field path for the x axis' },
-  { key: 'yField', label: 'Y field', type: 'text', help: 'Datastore field path for the y axis (pie: values, with X as labels). Heatmap: set this to switch to long-format mode -- see Trace type' },
-  {
-    key: 'traceType',
-    label: 'Trace type',
-    type: 'select',
-    options: ['scatter', 'bar', 'pie', 'heatmap'],
-    help:
-      'heatmap, Y field blank (wide/pivoted data): X field = row label column, X columns (default *) = value columns shown on y. ' +
-      'heatmap, Y field set (long/tidy data, one row per x,y cell): X field/Y field = the x/y columns, X columns names the single z-value column (default: first column that is neither X field, Y field, nor Series field). ' +
-      'Either way, colors green (low) to red (high), override via Trace config colorscale',
-  },
-  { key: 'traceMode', label: 'Mode', type: 'select', options: ['lines', 'markers', 'lines+markers'], help: 'scatter only' },
-  { key: 'lineColor', label: 'Line color', type: 'text', help: 'CSS color, e.g. #17becf' },
-  { key: 'lineWidth', label: 'Line width', type: 'number' },
-  { key: 'colorField', label: 'Marker color field', type: 'text', help: "Datastore field giving each point's marker color" },
-  { key: 'sizeField', label: 'Marker size field', type: 'text' },
-  { key: 'textField', label: 'Hover text field', type: 'text' },
+  { key: 'fieldDisplay', label: 'Name', type: 'text', help: "Legend name; blank falls back to Trace config's own \"name\", if any" },
   { key: 'hidden', label: 'Hidden', type: 'checkbox', help: 'Excludes this trace from the plot' },
   {
     key: 'traceConfig',
     label: 'Trace config',
     type: 'json',
-    help: 'Declarative JSON deep-merged into this trace, e.g. { "fill": "tozeroy", "yaxis": "y2" } (no code execution)',
+    help:
+      'This trace\'s Plotly object, authored as JSON (no code execution) -- any property, for any of: bar, box, candlestick, heatmap, histogram, pie, scatter, surface (anything else falls back to scatter). ' +
+      'A value that\'s only "#columnName#" becomes an array of that datastore column\'s value, one per row (x, y, z, open/high/low/close, labels, values, marker.size, marker.color, ...). ' +
+      'A value mixing "#columnName#" with other text becomes one formatted string per row (for text/hovertext). Any other string may reference ${param}. ' +
+      'Two reserved keys select which rows feed this trace rather than being passed to Plotly: "series" (only rows whose "seriesField" column -- default \'series\' -- equals it; blank/absent = every row) and "seriesField". ' +
+      'Examples -- line: {"type":"scatter","mode":"lines","x":"#date#","y":"#price#"}. bar: {"type":"bar","x":"#category#","y":"#value#"}. ' +
+      'bubble: {"type":"scatter","mode":"markers","x":"#x#","y":"#y#","marker":{"size":"#size#"}}. pie: {"type":"pie","labels":"#category#","values":"#amount#"}. ' +
+      'box: {"type":"box","y":"#value#","x":"#group#"}. histogram: {"type":"histogram","x":"#value#"}. ' +
+      'candlestick: {"type":"candlestick","x":"#date#","open":"#open#","high":"#high#","low":"#low#","close":"#close#"}. ' +
+      'timeseries: same as line -- Plotly auto-detects a date x-axis (or set plotlyConfig.layout.xaxis.type explicitly). ' +
+      'heatmap/surface (long/tidy data, one row per x,y cell): {"type":"heatmap","x":"#xcol#","y":"#ycol#","z":"#zcol#"} -- x/y/z are auto-reshaped into the 2D grid these two need ' +
+      '(distinct x/y values become the grid\'s columns/rows, first-seen order); heatmap colors green-to-red by default, override with colorscale',
   },
 ]
 

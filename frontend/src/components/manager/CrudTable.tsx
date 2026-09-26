@@ -180,56 +180,61 @@ export function CrudTable({
       {
         id: '__actions',
         header: '',
-        size: 60,
+        size: 84,
         cell: ({ row }) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-xs" aria-label="More actions">
-                <MoreHorizontal />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[180px]">
-              {onPreviewRow && (
-                <DropdownMenuItem onClick={() => onPreviewRow(row.original)}>
-                  <Play />
-                  Preview
+          <div className="flex items-center justify-end gap-0.5">
+            <Button variant="ghost" size="icon-xs" aria-label="Edit" title="Edit" onClick={() => setEditing(row.original)}>
+              <Pencil />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-xs" aria-label="More actions">
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[180px]">
+                {onPreviewRow && (
+                  <DropdownMenuItem onClick={() => onPreviewRow(row.original)}>
+                    <Play />
+                    Preview
+                  </DropdownMenuItem>
+                )}
+                {onTestRow && (
+                  <DropdownMenuItem onClick={() => handleTestRow(row.original)}>
+                    <Network />
+                    Test connection
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => setEditing(row.original)}>
+                  <Pencil />
+                  Edit
                 </DropdownMenuItem>
-              )}
-              {onTestRow && (
-                <DropdownMenuItem onClick={() => handleTestRow(row.original)}>
-                  <Network />
-                  Test connection
+                {(onExportRow || onImportRow) && <DropdownMenuSeparator />}
+                {onExportRow && (
+                  <DropdownMenuItem onClick={() => onExportRow(row.original)}>
+                    <Download />
+                    Export JSON
+                  </DropdownMenuItem>
+                )}
+                {onImportRow && (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setImportTarget(row.original)
+                      importInputRef.current?.click()
+                    }}
+                  >
+                    <Upload />
+                    Import JSON
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={() => handleDelete(row.original[idField])}>
+                  <Trash2 />
+                  Delete
                 </DropdownMenuItem>
-              )}
-              <DropdownMenuItem onClick={() => setEditing(row.original)}>
-                <Pencil />
-                Edit
-              </DropdownMenuItem>
-              {(onExportRow || onImportRow) && <DropdownMenuSeparator />}
-              {onExportRow && (
-                <DropdownMenuItem onClick={() => onExportRow(row.original)}>
-                  <Download />
-                  Export JSON
-                </DropdownMenuItem>
-              )}
-              {onImportRow && (
-                <DropdownMenuItem
-                  onClick={() => {
-                    setImportTarget(row.original)
-                    importInputRef.current?.click()
-                  }}
-                >
-                  <Upload />
-                  Import JSON
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={() => handleDelete(row.original[idField])}>
-                <Trash2 />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         ),
       },
     ],

@@ -51,6 +51,7 @@ import { LoadColumnsFromJsonDialog } from '../components/editor/LoadColumnsFromJ
 import { OpenPanelDialog } from '../components/editor/OpenPanelDialog'
 import { PanelJsonDialog } from '../components/editor/PanelJsonDialog'
 import { CloneDialog } from '../components/manager/CloneDialog'
+import { DatastorePreviewDialog } from '../components/manager/DatastorePreviewDialog'
 import { RoleMultiSelect } from '../components/manager/RoleMultiSelect'
 import {
   addChild,
@@ -83,6 +84,7 @@ import { LINK_SCHEMA, PARAMETER_SCHEMA, schemaFor, type FieldSchema } from '../c
 import { ViewSourceDialog } from '../components/editor/ViewSourceDialog'
 import { useResizable } from '../hooks/useResizable'
 import { openInNewWindow } from '../utils/newWindow'
+import { discoverAllParams } from '../utils/sqlParams'
 
 const BLANK_CONTENT: PanelContent = {
   parameters: [],
@@ -175,6 +177,7 @@ export function EditorPage() {
   // A local datastore copied to the clipboard, parsed and validated but not yet added -- pasteDatastore opens this
   // instead of adding it directly, so the name can be chosen before it lands in the list (see CloneDialog below).
   const [pasteDatastoreDraft, setPasteDatastoreDraft] = useState<PanelDatastoreRef | null>(null)
+  const [previewDatastore, setPreviewDatastore] = useState<{ ref: PanelDatastoreRef; initialParams: Record<string, string> } | null>(null)
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null)
   const savedSnapshot = useRef(
     JSON.stringify({ name: '', slug: '', category: '', subcategory: '', description: '', content: BLANK_CONTENT, allowedRoles: [] as number[] }),
@@ -328,22 +331,20 @@ export function EditorPage() {
   }
 
   const saveAs = async (newPanelId: string) => {
-    if (slugError) {
-      toast.error('Fix the slug before saving.')
-      return
-    }
     try {
+      // Slug is a unique alias (Panel.slug, specs/slug.md) -- a copy can't
+      // carry over the original's, same as the server's own Clone action
+      // (PanelViewSet.duplicate) leaves it blank rather than colliding.
       await api.post<Panel>('/panels/', {
         id: newPanelId,
         name,
-        slug: slug.trim() || null,
+        slug: null,
         category,
         subcategory,
         description,
         content,
         allowed_roles: allowedRoles,
       })
-      savedSnapshot.current = JSON.stringify({ name, slug, category, subcategory, description, content, allowedRoles })
       setSaveAsOpen(false)
       navigate(`/editor/${newPanelId}`)
     } catch (err) {
@@ -438,6 +439,37 @@ export function EditorPage() {
     setContent((c) => ({ ...c, datastores: [...c.datastores, fresh] }))
     setSelection({ kind: 'datastore', id: fresh.id })
     toast.success('Pasted.')
+  }
+
+  /** Params a local ref's own text fields reference, pre-filled with its Default value(s) -- same discovery DatastoreDialog.tsx's own Preview tab uses, just read off the ref directly instead of separate form fields. */
+  const localDatastorePreviewParams = (ref: PanelDatastoreRef): Record<string, string> => {
+    const names = discoverAllParams(
+      ref.inline_sql, ref.object_key, ref.object_url, ref.body, ref.data_url,
+      ref.request_body, ref.file_path, ref.file_expression,
+      ref.request_params ? JSON.stringify(ref.request_params) : undefined,
+      ref.renderer_config ? JSON.stringify(ref.renderer_config) : undefined,
+    )
+    const defaults = ref.default_params ?? {}
+    return Object.fromEntries(Array.from(new Set([...names, ...Object.keys(defaults)])).map((n) => [n, String(defaults[n] ?? '')]))
+  }
+
+  /** Opens the Preview dialog for either scope -- local runs the ref's own embedded definition ad-hoc; global fetches the saved Datastore's own discovered params/defaults first, same pre-fill DatastoreDialog.tsx's Preview tab gets. */
+  const previewDatastoreRef = async (ref: PanelDatastoreRef) => {
+    if (ref.scope === 'local') {
+      setPreviewDatastore({ ref, initialParams: localDatastorePreviewParams(ref) })
+      return
+    }
+    try {
+      const [ds, paramNames] = await Promise.all([
+        api.get<Datastore>(`/datastores/${ref.name}/`),
+        api.get<string[]>(`/datastores/${ref.name}/params/`),
+      ])
+      const defaults = ds.default_params ?? {}
+      const initialParams = Object.fromEntries(Array.from(new Set([...paramNames, ...Object.keys(defaults)])).map((n) => [n, String(defaults[n] ?? '')]))
+      setPreviewDatastore({ ref, initialParams })
+    } catch (err) {
+      toast.error(String(err))
+    }
   }
 
   // --- Content tree --- (generalized across every root -- content's own plus each drilldown's, see panelTree's allRoots/findRootContaining/replaceRoot -- so the exact same handlers work for a node anywhere in a drilldown's tree too)
@@ -849,6 +881,7 @@ export function EditorPage() {
               onUpdateDrilldown={updateDrilldown}
               onUpdateLink={updateLink}
               onEditDatastore={(ref) => setDatastoreDialog({ initial: ref })}
+              onPreviewDatastore={previewDatastoreRef}
             />
           </div>
         </div>
@@ -995,6 +1028,19 @@ export function EditorPage() {
         />
       )}
 
+      {previewDatastore && (
+        <DatastorePreviewDialog
+          title={previewDatastore.ref.name}
+          initialParams={previewDatastore.initialParams}
+          onClose={() => setPreviewDatastore(null)}
+          onRun={(params, limit) =>
+            previewDatastore.ref.scope === 'local'
+              ? api.post<DatastorePreviewResult>('/datastores/preview-config/', { ...previewDatastore.ref, params, limit })
+              : api.post<DatastorePreviewResult>(`/datastores/${previewDatastore.ref.name}/preview/`, { params, limit })
+          }
+        />
+      )}
+
       {pendingNav && (
         <Dialog open onOpenChange={(o) => !o && setPendingNav(null)}>
           <DialogContent className="sm:max-w-xs">
@@ -1047,6 +1093,7 @@ function SelectionProperties({
   onUpdateDrilldown,
   onUpdateLink,
   onEditDatastore,
+  onPreviewDatastore,
 }: {
   selection: Selection
   content: PanelContent
@@ -1058,6 +1105,7 @@ function SelectionProperties({
   onUpdateDrilldown: (id: string, patch: Record<string, unknown>) => void
   onUpdateLink: (id: string, patch: Record<string, unknown>) => void
   onEditDatastore: (ref: PanelDatastoreRef) => void
+  onPreviewDatastore: (ref: PanelDatastoreRef) => void
 }) {
   if (!selection) return <p className="p-3 text-[0.78em] text-muted-foreground">Select an item in the tree.</p>
 
@@ -1094,9 +1142,20 @@ function SelectionProperties({
             {ref.source_type}
           </div>
         )}
-        <Button size="sm" variant="outline" className="self-start" onClick={() => onEditDatastore(ref)}>
-          Edit
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={ref.scope === 'global'}
+            title={ref.scope === 'global' ? 'Global datastores are edited in Manager -> Datastores' : undefined}
+            onClick={() => onEditDatastore(ref)}
+          >
+            Edit
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => onPreviewDatastore(ref)}>
+            Preview
+          </Button>
+        </div>
       </div>
     )
   }

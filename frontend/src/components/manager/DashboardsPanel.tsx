@@ -180,51 +180,59 @@ export function DashboardsPanel() {
       {
         id: '__actions',
         header: '',
-        size: 60,
+        size: 100,
         cell: ({ row }) => (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon-xs" aria-label="More actions">
-                <MoreHorizontal />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[180px]">
-              <DropdownMenuItem onClick={() => navigate(`/panel/${row.original.id}`)}>
-                <Eye />
-                View
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => openInNewWindow(`/panel/${row.original.slug || row.original.id}`)}>
-                <ExternalLink />
-                View in New Window
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => copyPanelLink(row.original)}>
-                <Link2 />
-                Copy Panel Link
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate(`/editor/${row.original.id}`)}>
-                <Pencil />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setUsageTarget(row.original)}>
-                <Activity />
-                View usage
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setCloneTarget(row.original)}>
-                <Copy />
-                Clone
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => downloadUrl(`/api/panels/${row.original.id}/download/`)}>
-                <Download />
-                Export JSON
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant="destructive" onClick={() => handleDelete(row.original.id)}>
-                <Trash2 />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center justify-end gap-0.5">
+            <Button variant="ghost" size="icon-xs" aria-label="View" title="View" onClick={() => navigate(`/panel/${row.original.id}`)}>
+              <Eye />
+            </Button>
+            <Button variant="ghost" size="icon-xs" aria-label="Edit" title="Edit" onClick={() => navigate(`/editor/${row.original.id}`)}>
+              <Pencil />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-xs" aria-label="More actions">
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[180px]">
+                <DropdownMenuItem onClick={() => navigate(`/panel/${row.original.id}`)}>
+                  <Eye />
+                  View
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openInNewWindow(`/panel/${row.original.slug || row.original.id}`)}>
+                  <ExternalLink />
+                  View in New Window
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => copyPanelLink(row.original)}>
+                  <Link2 />
+                  Copy Panel Link
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate(`/editor/${row.original.id}`)}>
+                  <Pencil />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setUsageTarget(row.original)}>
+                  <Activity />
+                  View usage
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setCloneTarget(row.original)}>
+                  <Copy />
+                  Clone
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => downloadUrl(`/api/panels/${row.original.id}/download/`)}>
+                  <Download />
+                  Export JSON
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onClick={() => handleDelete(row.original.id)}>
+                  <Trash2 />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         ),
       },
     ],

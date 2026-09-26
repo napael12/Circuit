@@ -1,8 +1,12 @@
 import Plotly from 'plotly.js/lib/core'
 import bar from 'plotly.js/lib/bar'
+import box from 'plotly.js/lib/box'
+import candlestick from 'plotly.js/lib/candlestick'
 import heatmap from 'plotly.js/lib/heatmap'
+import histogram from 'plotly.js/lib/histogram'
 import pie from 'plotly.js/lib/pie'
 import scatter from 'plotly.js/lib/scatter'
+import surface from 'plotly.js/lib/surface'
 import type { Data, Layout } from 'plotly.js'
 import createPlotlyComponent from 'react-plotly.js/factory'
 
@@ -14,6 +18,7 @@ import { useDatastore } from '../../hooks/useDatastore'
 import { useTitleText } from '../../hooks/useTitleText'
 import { downloadCsv, rowsToCsv, sanitizeFilename } from '../../utils/csv'
 import { getFieldValue } from '../../utils/panelFormat'
+import { substituteParams } from '../../utils/panelTemplating'
 import { usePanelId } from '../layout/ParameterContext'
 import { useReactiveDatastoreParams } from '../layout/useComponentParams'
 import { ControlContextMenu } from './ControlContextMenu'
@@ -21,8 +26,8 @@ import { DatastoreStatusBadge } from './DatastoreStatusBadge'
 import type { ControlProps } from './types'
 
 // A custom bundle (plotly.js core + just these trace families) rather than plotly.js-basic-dist,
-// which has no heatmap. Registered once at module load.
-;(Plotly as unknown as { register: (modules: unknown[]) => void }).register([bar, heatmap, pie, scatter])
+// which has neither heatmap nor the finance types. Registered once at module load.
+;(Plotly as unknown as { register: (modules: unknown[]) => void }).register([bar, box, candlestick, heatmap, histogram, pie, scatter, surface])
 
 const Plot = createPlotlyComponent(Plotly)
 
@@ -35,34 +40,16 @@ const MAX_CHART_ROWS = 1000
 
 // Only these trace families are registered above -- an unrecognized or misspelled
 // `type` on a plotly-trace degrades to 'scatter' rather than crashing Plotly at render.
-const ALLOWED_TRACE_TYPES = new Set(['bar', 'scatter', 'pie', 'heatmap'])
+const ALLOWED_TRACE_TYPES = new Set(['bar', 'box', 'candlestick', 'heatmap', 'histogram', 'pie', 'scatter', 'surface'])
+/** heatmap/surface: their `z` must be a genuine 2D grid (rows of `y`, columns of `x`), not one flat value per row -- see gridify. */
+const GRID_TRACE_TYPES = new Set(['heatmap', 'surface'])
 
-/** Heatmap default: low = green -> high = red (override with the trace's traceConfig.colorscale). */
+/** Heatmap default: low = green -> high = red (override via traceConfig.colorscale). */
 const HEATMAP_COLORSCALE = [
   [0, '#1a9850'],
   [0.5, '#ffffbf'],
   [1, '#d73027'],
 ]
-
-interface TraceMapping {
-  type?: string
-  mode?: string
-  x?: string
-  y?: string
-  color?: string
-  size?: string
-  text?: string
-  name?: string
-  /** plotly-trace nodes only -- matched against each row's seriesField (default 'series'); blank = every row. */
-  series?: string
-  seriesField?: string
-  /** Wide-data mode: comma-separated datastore columns (or '*' = every column but seriesField) plotted as x = column name, y = the matching row's value. */
-  xColumns?: string
-  lineColor?: string
-  lineWidth?: number
-  /** Trace-node-level declarative override, deep-merged after the built trace (before plotlyConfig.traces[i]). */
-  override?: Record<string, unknown>
-}
 
 /** Datastore column a trace's `series` value is matched against, when the trace sets no seriesField. */
 const DEFAULT_SERIES_FIELD = 'series'
@@ -71,27 +58,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
-/** A plotly-trace child node -> a TraceMapping. */
-function nodeToMapping(node: PanelNode): TraceMapping {
-  return {
-    type: node.traceType,
-    mode: node.traceMode,
-    x: node.xField,
-    y: node.yField,
-    color: node.colorField,
-    size: node.sizeField,
-    text: node.textField,
-    name: node.fieldDisplay || node.series,
-    series: node.series,
-    seriesField: node.seriesField,
-    xColumns: node.xColumns,
-    lineColor: node.lineColor,
-    lineWidth: node.lineWidth,
-    override: isPlainObject(node.traceConfig) ? node.traceConfig : undefined,
-  }
-}
-
-/** Plain-object recursive merge -- `override` wins on conflicting keys; arrays are replaced wholesale, not concatenated. Both arguments are always either literal object trees built by this component or JSON.parse() output (see the safety note on buildTraces below), so this can never merge in a function. */
+/** Plain-object recursive merge -- `override` wins on conflicting keys; arrays are replaced wholesale, not concatenated. Both arguments are always either literal object trees built by this component or JSON.parse() output (see the safety note on buildTrace below), so this can never merge in a function. */
 function deepMerge(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = { ...base }
   for (const [key, value] of Object.entries(override)) {
@@ -105,91 +72,210 @@ function deepMerge(base: Record<string, unknown>, override: Record<string, unkno
   return result
 }
 
-function buildTrace(mapping: TraceMapping, allRows: Record<string, unknown>[], override: Record<string, unknown>): Record<string, unknown> {
-  // A non-blank series keeps only the rows whose `series` value matches (compared as strings, so a
-  // numeric series column still matches a typed-in "1"); blank plots the entire dataset.
-  const rows = mapping.series ? allRows.filter((r) => String(getFieldValue(r, mapping.seriesField || DEFAULT_SERIES_FIELD)) === mapping.series) : allRows
-  const type = ALLOWED_TRACE_TYPES.has(mapping.type ?? '') ? mapping.type : 'scatter'
-  const trace: Record<string, unknown> = {
-    type,
-    mode: mapping.mode,
-    name: mapping.name || mapping.series || mapping.y || mapping.x,
-    x: mapping.x ? rows.map((r) => getFieldValue(r, mapping.x!)) : [],
-    y: mapping.y ? rows.map((r) => getFieldValue(r, mapping.y!)) : [],
-  }
-  if (type === 'heatmap') {
-    if (mapping.y) {
-      // Long format (tidy/unpivoted): one row per (x, y) cell already -- x and y are already
-      // set correctly above from mapping.x/mapping.y, so only z needs computing here. xColumns
-      // names the single value column (blank/'*' = the first column that's neither x, y, nor series).
-      const skip = new Set([mapping.x, mapping.y, mapping.seriesField || DEFAULT_SERIES_FIELD].filter(Boolean))
-      const zField = mapping.xColumns?.trim() && mapping.xColumns.trim() !== '*'
-        ? mapping.xColumns.trim()
-        : Object.keys(rows[0] ?? {}).find((k) => !skip.has(k))
-      trace.z = zField ? rows.map((r) => getFieldValue(r, zField)) : []
-    } else {
-      // Wide format (pivoted): x = each row's xField value (already set above), y = the column
-      // names (xColumns, '*' = every column but the x/series fields), z[j][i] = row i's value in column j.
-      const skip = new Set([mapping.x, mapping.seriesField || DEFAULT_SERIES_FIELD].filter(Boolean))
-      const columns = mapping.xColumns?.trim() && mapping.xColumns.trim() !== '*'
-        ? mapping.xColumns.split(',').map((c) => c.trim()).filter(Boolean)
-        : Object.keys(rows[0] ?? {}).filter((k) => !skip.has(k))
-      trace.y = columns
-      trace.z = columns.map((c) => rows.map((r) => getFieldValue(r, c)))
+// Matches a string value that is *only* a single #columnName# token (nothing
+// else) -- resolves to a per-row array of the column's raw value (numbers
+// stay numbers). A dotted path is allowed, same as every other field-path
+// lookup in this app (getFieldValue).
+const WHOLE_COLUMN_RE = /^#([\w.]+)#$/
+// Matches every #columnName# occurrence within a larger string -- used for
+// the "template" case (a string with other text around the token(s)).
+const COLUMN_TOKEN_RE = /#([\w.]+)#/g
+
+/** ${param}-only substitution, recursively through an object/array tree -- used for `plotlyConfig.layout`, which isn't row-scoped so `#column#` doesn't apply there. */
+function substituteParamsDeep(value: unknown, params: Record<string, string>): unknown {
+  if (typeof value === 'string') return substituteParams(value, params)
+  if (Array.isArray(value)) return value.map((v) => substituteParamsDeep(v, params))
+  if (isPlainObject(value)) return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, substituteParamsDeep(v, params)]))
+  return value
+}
+
+/**
+ * Recursively resolves a parsed traceConfig (or plotlyConfig.traces[i]
+ * override) tree against this trace's own rows and the panel's current
+ * parameter values:
+ *
+ * - A string that is *exactly* "#column#" (see WHOLE_COLUMN_RE) becomes a
+ *   per-row array of that column's raw value -- what every axis/array-valued
+ *   Plotly property uses (x, y, z, open/high/low/close, labels, values,
+ *   marker.size, marker.color, ...).
+ * - A string containing "#column#" tokens *plus other text* first gets
+ *   ${param} substitution, then becomes a per-row array of strings, each
+ *   row's copy of the template with its own token(s) filled in -- for
+ *   text/hovertext-style properties wanting a formatted per-point label.
+ * - Any other string gets ${param} substitution only and stays a scalar
+ *   (type, mode, name, a literal color, ...). Unknown ${name} is left as-is.
+ * - Numbers/booleans/null pass through unchanged; objects/arrays recurse.
+ */
+function resolveTraceValue(value: unknown, rows: Record<string, unknown>[], params: Record<string, string>): unknown {
+  if (typeof value === 'string') {
+    const whole = value.match(WHOLE_COLUMN_RE)
+    if (whole) return rows.map((r) => getFieldValue(r, whole[1]))
+    const withParams = substituteParams(value, params)
+    COLUMN_TOKEN_RE.lastIndex = 0
+    if (COLUMN_TOKEN_RE.test(withParams)) {
+      return rows.map((r) => {
+        COLUMN_TOKEN_RE.lastIndex = 0
+        return withParams.replace(COLUMN_TOKEN_RE, (_match, name: string) => {
+          const v = getFieldValue(r, name)
+          return v == null ? '' : String(v)
+        })
+      })
     }
-    trace.colorscale = HEATMAP_COLORSCALE
-    delete trace.mode
-    if (mapping.name === undefined) trace.name = ''
-  } else if (mapping.xColumns?.trim()) {
-    const row = rows[0] ?? {}
-    const seriesField = mapping.seriesField || DEFAULT_SERIES_FIELD
-    const columns =
-      mapping.xColumns.trim() === '*'
-        ? Object.keys(row).filter((k) => k !== seriesField)
-        : mapping.xColumns.split(',').map((c) => c.trim()).filter(Boolean)
-    trace.x = columns
-    trace.y = columns.map((c) => getFieldValue(row, c))
+    return withParams
   }
-  if (mapping.text) trace.text = rows.map((r) => getFieldValue(r, mapping.text!))
-  if (mapping.color || mapping.size) {
-    trace.marker = {
-      ...(mapping.color ? { color: rows.map((r) => getFieldValue(r, mapping.color!)) } : {}),
-      ...(mapping.size ? { size: rows.map((r) => getFieldValue(r, mapping.size!)) } : {}),
+  if (Array.isArray(value)) return value.map((v) => resolveTraceValue(v, rows, params))
+  if (isPlainObject(value)) return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolveTraceValue(v, rows, params)]))
+  return value
+}
+
+/**
+ * Synthesizes an equivalent traceConfig from the pre-JSON-config form fields
+ * a plotly-trace node used to have (xField, yField, traceType, ...) --
+ * used only when a node has no traceConfig of its own, so a dashboard saved
+ * before trace config JSON existed keeps rendering without anyone having to
+ * open and resave it. Computed fresh at render time (see buildTrace), never
+ * written back to the saved panel. The old wide/pivoted heatmap mode and
+ * non-heatmap xColumns pivot have no #column# equivalent and aren't carried
+ * over -- a trace that relied on either renders best-effort (whatever x/y it
+ * still resolves to) until its Trace config JSON is rewritten by hand.
+ */
+function legacyTraceConfig(node: PanelNode): Record<string, unknown> | undefined {
+  const hasLegacy =
+    node.traceType || node.xField || node.yField || node.colorField || node.sizeField ||
+    node.textField || node.series || node.seriesField || node.lineColor || node.lineWidth != null || node.traceMode
+  if (!hasLegacy) return undefined
+
+  const cfg: Record<string, unknown> = { type: node.traceType || 'scatter' }
+  if (node.traceMode) cfg.mode = node.traceMode
+  if (node.series) cfg.series = node.series
+  if (node.seriesField) cfg.seriesField = node.seriesField
+
+  if (node.traceType === 'heatmap') {
+    if (node.xField) cfg.x = `#${node.xField}#`
+    if (node.yField) cfg.y = `#${node.yField}#`
+    const zField = node.xColumns?.trim() && node.xColumns.trim() !== '*' ? node.xColumns.trim() : undefined
+    if (zField) cfg.z = `#${zField}#`
+    cfg.colorscale = HEATMAP_COLORSCALE
+  } else if (node.traceType === 'pie') {
+    if (node.xField) cfg.labels = `#${node.xField}#`
+    if (node.yField) cfg.values = `#${node.yField}#`
+  } else {
+    if (node.xField) cfg.x = `#${node.xField}#`
+    if (node.yField) cfg.y = `#${node.yField}#`
+  }
+  if (node.textField) cfg.text = `#${node.textField}#`
+  if (node.colorField || node.sizeField) {
+    cfg.marker = {
+      ...(node.colorField ? { color: `#${node.colorField}#` } : {}),
+      ...(node.sizeField ? { size: `#${node.sizeField}#` } : {}),
     }
   }
-  if (mapping.lineColor || mapping.lineWidth != null) {
-    trace.line = {
-      ...(mapping.lineColor ? { color: mapping.lineColor } : {}),
-      ...(mapping.lineWidth != null ? { width: mapping.lineWidth } : {}),
+  if (node.lineColor || node.lineWidth != null) {
+    cfg.line = {
+      ...(node.lineColor ? { color: node.lineColor } : {}),
+      ...(node.lineWidth != null ? { width: node.lineWidth } : {}),
     }
   }
-  // Plotly pie traces use labels/values, not x/y.
-  if (type === 'pie') {
-    trace.labels = trace.x
-    trace.values = trace.y
-    delete trace.x
-    delete trace.y
+  return cfg
+}
+
+/**
+ * heatmap/surface need `z` as a genuine 2D grid (z[row][col], with `x`/`y`
+ * as the *distinct* column/row coordinate labels, `x.length === z[0].length`
+ * and `y.length === z.length`) -- not one x/y/z triple per row the way every
+ * other trace type's #column# resolution naturally produces (tidy/long
+ * data: one row per (x, y) cell). Reshapes exactly that tidy shape -- flat,
+ * equal-length x/y/z arrays -- into the grid Plotly actually wants;
+ * otherwise (no z, or z already a 2D array -- a hand-authored literal
+ * matrix) leaves the trace alone. Distinct (x, y) pairs keep first-seen
+ * order, so a grid built from an already-sorted query reads left-to-right/
+ * top-to-bottom as authored.
+ */
+function gridifyTrace(trace: Record<string, unknown>): Record<string, unknown> {
+  const { x, y, z } = trace
+  if (!Array.isArray(x) || !Array.isArray(y) || !Array.isArray(z) || Array.isArray(z[0])) return trace
+  if (x.length !== z.length || y.length !== z.length) return trace
+
+  const xOrder: unknown[] = []
+  const xIndex = new Map<string, number>()
+  const yOrder: unknown[] = []
+  const yIndex = new Map<string, number>()
+  for (const v of x) {
+    const k = String(v)
+    if (!xIndex.has(k)) {
+      xIndex.set(k, xOrder.length)
+      xOrder.push(v)
+    }
   }
-  return deepMerge(deepMerge(trace, mapping.override ?? {}), override)
+  for (const v of y) {
+    const k = String(v)
+    if (!yIndex.has(k)) {
+      yIndex.set(k, yOrder.length)
+      yOrder.push(v)
+    }
+  }
+  const grid: unknown[][] = yOrder.map(() => xOrder.map(() => null))
+  for (let i = 0; i < z.length; i++) {
+    grid[yIndex.get(String(y[i]))!][xIndex.get(String(x[i]))!] = z[i]
+  }
+  return { ...trace, x: xOrder, y: yOrder, z: grid }
+}
+
+/**
+ * Builds one Plotly trace object from a plotly-trace node's traceConfig (or
+ * its legacyTraceConfig fallback): `series`/`seriesField`, if present, first
+ * filter `allRows` down to the rows this trace actually plots (compared as
+ * strings, so a numeric series column still matches a typed-in "1"; blank
+ * `series`/no key plots the entire dataset) and are then stripped -- they're
+ * never passed through to Plotly itself. Everything else in the object is
+ * resolved via resolveTraceValue and handed to Plotly close to verbatim.
+ *
+ * traceConfig/plotlyConfig are declarative only: the only things that ever
+ * flow into Plotly's layout/trace objects are values this component computes
+ * itself, plus the result of JSON.parse() on these two fields (parsed once,
+ * upstream, by PropertyPanel.tsx's JsonControl on blur). JSON.parse can only
+ * ever produce plain objects/arrays/strings/numbers/booleans/null -- never a
+ * function or anything executable -- so resolving/deep-merging that output
+ * into layout/trace props can never inject code. No eval, no `new Function`,
+ * no dangerouslySetInnerHTML anywhere in this file.
+ */
+function buildTrace(
+  node: PanelNode,
+  allRows: Record<string, unknown>[],
+  params: Record<string, string>,
+  override: Record<string, unknown>,
+): Record<string, unknown> {
+  const raw = isPlainObject(node.traceConfig) && Object.keys(node.traceConfig).length > 0 ? node.traceConfig : (legacyTraceConfig(node) ?? {})
+  const series = typeof raw.series === 'string' ? substituteParams(raw.series, params) : undefined
+  const seriesField = typeof raw.seriesField === 'string' ? raw.seriesField : DEFAULT_SERIES_FIELD
+  const rows = series ? allRows.filter((r) => String(getFieldValue(r, seriesField)) === series) : allRows
+  const { series: _series, seriesField: _seriesField, ...rest } = raw
+
+  const resolved = resolveTraceValue(rest, rows, params) as Record<string, unknown>
+  const type = ALLOWED_TRACE_TYPES.has(String(resolved.type ?? '')) ? String(resolved.type) : 'scatter'
+  let trace: Record<string, unknown> = { ...resolved, type }
+  if (!trace.name) trace.name = node.fieldDisplay || undefined
+  if (GRID_TRACE_TYPES.has(type)) trace = gridifyTrace(trace)
+  if (type === 'heatmap' && trace.colorscale === undefined) trace.colorscale = HEATMAP_COLORSCALE
+
+  return deepMerge(trace, override)
 }
 
 /**
  * Plotly-based chart control (a separate control from the Recharts-based
  * `chart`/ChartControl.tsx -- see the plan this was built from).
- * plotly-trace child nodes (one per trace: series filter, x/y fields, type,
- * style) drive the plot, plus one JSON blob on the node:
  *
- * `plotlyConfig`: JSON merged into Plotly's layout and, via `traces[i]`,
- *   into each built trace above, e.g. {"layout": {"title": {...}}}
+ * plotly-trace child nodes drive the plot -- each one's `traceConfig` JSON
+ * *is* the Plotly trace object (any property, for any registered trace
+ * type), with `#column#`/`${param}` templating (see resolveTraceValue) so it
+ * can still be data- and parameter-driven; only Name (fieldDisplay) and
+ * Hidden stay as form fields, everything else is authored as JSON.
  *
- * Trace nodes' `traceConfig` and `plotlyConfig` are declarative only: the only things that ever flow into Plotly's
- * layout/trace objects are values this component computes itself, plus the
- * result of JSON.parse() on these two fields (parsed once, upstream, by
- * PropertyPanel.tsx's JsonControl on blur). JSON.parse can only ever
- * produce plain objects/arrays/strings/numbers/booleans/null -- never a
- * function or anything executable -- so deepMerge-ing that output into
- * layout/trace props can never inject code. No eval, no `new Function`, no
- * dangerouslySetInnerHTML anywhere in this file.
+ * `plotlyConfig` (on the plotly-chart node itself): JSON merged into
+ * Plotly's layout and, via `traces[i]`, deep-merged on top of each built
+ * trace above as a final override, e.g. {"layout": {"title": {...}}}.
+ * `layout` gets ${param} substitution (not #column# -- layout isn't
+ * row-scoped).
  */
 export function PlotlyChartControl({ component, datastores, previewMode }: ControlProps) {
   const params = useReactiveDatastoreParams(component.id)
@@ -232,18 +318,18 @@ export function PlotlyChartControl({ component, datastores, previewMode }: Contr
   }
 
   const plottedRows = rows.length > MAX_CHART_ROWS ? rows.slice(0, MAX_CHART_ROWS) : rows
-  const traceMappings = (component.columns ?? []).filter((c) => c.type === 'plotly-trace' && !c.hidden).map(nodeToMapping)
+  const traceNodes = (component.columns ?? []).filter((c) => c.type === 'plotly-trace' && !c.hidden)
   const config = (component.plotlyConfig && typeof component.plotlyConfig === 'object' ? component.plotlyConfig : {}) as {
     layout?: Record<string, unknown>
     traces?: Record<string, unknown>[]
   }
 
-  const builtTraces = traceMappings.map((mapping, i) => buildTrace(mapping, plottedRows, config.traces?.[i] ?? {}))
+  const builtTraces = traceNodes.map((node, i) => buildTrace(node, plottedRows, params, config.traces?.[i] ?? {}))
   const layout = deepMerge(
     // component.hideTitle also hides this in-canvas Plotly title (fed from the same `title`),
     // so the two never show the same text redundantly -- see LeafNode's own header in PanelLayout.tsx.
     { title: { text: component.hideTitle ? '' : title }, autosize: true, margin: { t: 32, r: 16, b: 40, l: 48 }, font: { size: 11 } },
-    config.layout ?? {},
+    substituteParamsDeep(config.layout ?? {}, params) as Record<string, unknown>,
   )
 
   return (
@@ -257,7 +343,7 @@ export function PlotlyChartControl({ component, datastores, previewMode }: Contr
     >
       <div className="relative h-full w-full p-2">
         <DatastoreStatusBadge refreshMode={refreshMode} lastRunAt={lastRunAt} />
-        {traceMappings.length === 0 ? (
+        {traceNodes.length === 0 ? (
           <div className="flex h-full items-center justify-center text-[0.85em] text-muted-foreground">
             Add a plotly-trace child to this chart in the component tree
           </div>
