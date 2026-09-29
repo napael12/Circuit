@@ -44,6 +44,7 @@ const AUTH_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'basic', label: 'Basic (username, password)' },
   { value: 'api_key', label: 'API Key' },
   { value: 'bearer', label: 'Bearer Token' },
+  { value: 'oauth', label: 'OAuth 2.0 (Client Credentials)' },
   { value: 'digest', label: 'Digest Auth' },
 ]
 
@@ -124,6 +125,15 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
   const [apiKeyValue, setApiKeyValue] = useState('')
   const [apiKeyLocation, setApiKeyLocation] = useState((initial?.config?.api_key_location as string | undefined) ?? 'header')
   const [token, setToken] = useState('')
+  const [oauthClientId, setOauthClientId] = useState((initial?.config?.oauth_client_id as string | undefined) ?? '')
+  const [oauthClientSecret, setOauthClientSecret] = useState('')
+  const [oauthScope, setOauthScope] = useState((initial?.config?.oauth_scope as string | undefined) ?? '')
+  const [oauthClientAuth, setOauthClientAuth] = useState((initial?.config?.oauth_client_auth as string | undefined) ?? 'body')
+  const [oauthBodyMode, setOauthBodyMode] = useState((initial?.config?.oauth_body_mode as 'form' | 'json' | undefined) ?? 'form')
+  const [oauthRawBody, setOauthRawBody] = useState('')
+  const [oauthExtraParamsText, setOauthExtraParamsText] = useState(
+    initial?.type === 'http' ? toKeyValueLines(initial?.config?.oauth_extra_params as Record<string, unknown> | undefined) : '',
+  )
   const [digestAlgorithm, setDigestAlgorithm] = useState((initial?.config?.digest_algorithm as string | undefined) ?? 'MD5')
   const [httpHeadersText, setHttpHeadersText] = useState(
     initial?.type === 'http' ? toKeyValueLines(initial?.config?.headers as Record<string, unknown> | undefined) : '',
@@ -164,6 +174,17 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
         config.api_key_location = apiKeyLocation
       } else if (authType === 'bearer') {
         config.token = token
+      } else if (authType === 'oauth') {
+        config.oauth_client_id = oauthClientId
+        config.oauth_client_secret = oauthClientSecret
+        config.oauth_client_auth = oauthClientAuth
+        config.oauth_body_mode = oauthBodyMode
+        if (oauthBodyMode === 'json') {
+          config.oauth_raw_body = oauthRawBody
+        } else {
+          if (oauthScope.trim()) config.oauth_scope = oauthScope.trim()
+          config.oauth_extra_params = parseKeyValueLines(oauthExtraParamsText)
+        }
       } else if (authType === 'digest') {
         config.digest_algorithm = digestAlgorithm
       }
@@ -399,7 +420,14 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
 
           {type === 'http' && (
             <>
-              <Field label="Authorization URL" helperText="Optional -- required for Digest Auth, otherwise only used by Test connection">
+              <Field
+                label={authType === 'oauth' ? 'Token URL' : 'Authorization URL'}
+                helperText={
+                  authType === 'oauth'
+                    ? 'Required -- the OAuth token endpoint (Client Credentials grant)'
+                    : 'Optional -- required for Digest Auth, otherwise only used by Test connection'
+                }
+              >
                 <Input
                   value={authUrl}
                   onChange={(e) => setAuthUrl(e.target.value)}
@@ -474,6 +502,80 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
                 <Field label="Token" helperText={isEdit ? 'Leave blank to keep the saved value' : undefined}>
                   <Input type="password" value={token} onChange={(e) => setToken(e.target.value)} className={cn(inputCls, 'font-mono')} />
                 </Field>
+              )}
+
+              {authType === 'oauth' && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Client ID">
+                      <Input value={oauthClientId} onChange={(e) => setOauthClientId(e.target.value)} className={cn(inputCls, 'font-mono')} />
+                    </Field>
+                    <Field label="Client secret" helperText={isEdit ? 'Leave blank to keep the saved value' : undefined}>
+                      <Input
+                        type="password"
+                        value={oauthClientSecret}
+                        onChange={(e) => setOauthClientSecret(e.target.value)}
+                        className={inputCls}
+                      />
+                    </Field>
+                  </div>
+
+                  <Field label="Send client credentials as">
+                    <Select value={oauthClientAuth} onValueChange={setOauthClientAuth}>
+                      <SelectTrigger className={selectTriggerCls}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="body">Request body (client_id / client_secret)</SelectItem>
+                        <SelectItem value="basic">HTTP Basic Auth header</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+
+                  <Tabs value={oauthBodyMode} onValueChange={(v) => setOauthBodyMode(v as 'form' | 'json')}>
+                    <TabsList className="w-full">
+                      <TabsTrigger value="form" className="flex-1">
+                        Structured request
+                      </TabsTrigger>
+                      <TabsTrigger value="json" className="flex-1">
+                        Raw JSON
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+
+                  {oauthBodyMode === 'form' ? (
+                    <>
+                      <Field label="Scope" helperText="Optional">
+                        <Input value={oauthScope} onChange={(e) => setOauthScope(e.target.value)} className={inputCls} />
+                      </Field>
+                      <Field label="Extra request params" helperText="key=value, one per line -- merged into the token request body">
+                        <Textarea
+                          rows={2}
+                          value={oauthExtraParamsText}
+                          onChange={(e) => setOauthExtraParamsText(e.target.value)}
+                          placeholder={'audience=https://api.example.com'}
+                          className="font-mono text-[0.85em]"
+                        />
+                      </Field>
+                    </>
+                  ) : (
+                    <Field
+                      label="Raw request body (JSON)"
+                      helperText={
+                        (isEdit ? 'Leave blank to keep the saved value. ' : '') +
+                        'Posted verbatim as the token request body. May reference ${VARIABLE} (Settings). Client ID/Secret above are only used if "Send client credentials as" is HTTP Basic'
+                      }
+                    >
+                      <Textarea
+                        rows={4}
+                        value={oauthRawBody}
+                        onChange={(e) => setOauthRawBody(e.target.value)}
+                        placeholder={'{\n  "grant_type": "client_credentials",\n  "client_id": "...",\n  "client_secret": "...",\n  "audience": "https://api.example.com"\n}'}
+                        className="font-mono text-[0.85em]"
+                      />
+                    </Field>
+                  )}
+                </>
               )}
 
               <Field label="Additional headers" helperText="key=value, one per line">

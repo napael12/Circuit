@@ -4,7 +4,7 @@ from .models import DataConnection
 
 # config keys treated as secrets, same as the model-level `password` column:
 # redacted on read, and a blank value on write means "keep the saved one".
-SECRET_CONFIG_KEYS = {'secret_key', 'token', 'api_key_value'}
+SECRET_CONFIG_KEYS = {'secret_key', 'token', 'api_key_value', 'oauth_client_secret', 'oauth_raw_body'}
 
 
 class DataConnectionSerializer(serializers.ModelSerializer):

@@ -230,6 +230,12 @@ function gridifyTrace(trace: Record<string, unknown>): Record<string, unknown> {
  * never passed through to Plotly itself. Everything else in the object is
  * resolved via resolveTraceValue and handed to Plotly close to verbatim.
  *
+ * `series`/`seriesField` can come from either the node's own Series Value/
+ * Series Column form fields, or from `traceConfig` itself setting the same
+ * two keys -- traceConfig wins when it sets one (same "JSON overrides the
+ * form field default" precedence `name`/`fieldDisplay` already use just
+ * below), so a trace authored entirely in JSON keeps working unchanged.
+ *
  * traceConfig/plotlyConfig are declarative only: the only things that ever
  * flow into Plotly's layout/trace objects are values this component computes
  * itself, plus the result of JSON.parse() on these two fields (parsed once,
@@ -246,8 +252,11 @@ function buildTrace(
   override: Record<string, unknown>,
 ): Record<string, unknown> {
   const raw = isPlainObject(node.traceConfig) && Object.keys(node.traceConfig).length > 0 ? node.traceConfig : (legacyTraceConfig(node) ?? {})
-  const series = typeof raw.series === 'string' ? substituteParams(raw.series, params) : undefined
-  const seriesField = typeof raw.seriesField === 'string' ? raw.seriesField : DEFAULT_SERIES_FIELD
+  const rawSeries = typeof raw.series === 'string' ? raw.series : undefined
+  const rawSeriesField = typeof raw.seriesField === 'string' ? raw.seriesField : undefined
+  const seriesValue = rawSeries ?? node.series
+  const seriesField = rawSeriesField ?? node.seriesField ?? DEFAULT_SERIES_FIELD
+  const series = seriesValue ? substituteParams(seriesValue, params) : undefined
   const rows = series ? allRows.filter((r) => String(getFieldValue(r, seriesField)) === series) : allRows
   const { series: _series, seriesField: _seriesField, ...rest } = raw
 
@@ -268,8 +277,10 @@ function buildTrace(
  * plotly-trace child nodes drive the plot -- each one's `traceConfig` JSON
  * *is* the Plotly trace object (any property, for any registered trace
  * type), with `#column#`/`${param}` templating (see resolveTraceValue) so it
- * can still be data- and parameter-driven; only Name (fieldDisplay) and
- * Hidden stay as form fields, everything else is authored as JSON.
+ * can still be data- and parameter-driven; Name (fieldDisplay), Hidden, and
+ * Series Column/Series Value (seriesField/series -- filters one dataset down
+ * to this trace's own rows, for multiple traces/series off one datastore)
+ * stay as form fields, everything else is authored as JSON.
  *
  * `plotlyConfig` (on the plotly-chart node itself): JSON merged into
  * Plotly's layout and, via `traces[i]`, deep-merged on top of each built

@@ -26,20 +26,24 @@ export interface DataConnection {
   port: number | null
   database: string
   options: Record<string, unknown>
-  /** type=http: optional "Authorization URL" -- required for auth_type=digest, otherwise only used by Test. */
+  /** type=http: optional "Authorization URL" -- required for auth_type=digest, auth_type=oauth's Token URL, otherwise only used by Test. */
   url: string
   /** type=http: Basic/Digest auth username. */
   username: string
   /**
    * Per-type settings that don't fit the shared columns above -- see
    * backend/connections/models.py's DataConnection.config docstring for the
-   * shape per type. Secret-shaped keys (secret_key, token, api_key_value)
-   * come back blanked from the API; leave them blank on save to keep the
-   * stored value.
+   * shape per type. Secret-shaped keys (secret_key, token, api_key_value,
+   * oauth_client_secret, oauth_raw_body) come back blanked from the API;
+   * leave them blank on save to keep the stored value.
    *
-   * type=http: {auth_type: 'none'|'basic'|'api_key'|'bearer'|'digest',
+   * type=http: {auth_type: 'none'|'basic'|'api_key'|'bearer'|'oauth'|'digest',
    *   api_key_name?, api_key_value?, api_key_location?: 'header'|'query',
-   *   token?, digest_algorithm?, headers?: Record<string, string>}.
+   *   token?, digest_algorithm?, headers?: Record<string, string>,
+   *   oauth_client_id?, oauth_client_secret?, oauth_scope?,
+   *   oauth_client_auth?: 'body'|'basic', oauth_body_mode?: 'form'|'json',
+   *   oauth_extra_params?: Record<string, string> (form mode),
+   *   oauth_raw_body?: string (json mode -- literal JSON text, may reference ${VARIABLE})}.
    */
   config: Record<string, unknown>
   max_rows: number | null
@@ -574,8 +578,10 @@ export interface PanelNode {
    * only rows whose `seriesField` column equals it -- compared as strings --
    * feed this trace, blank/absent plots the entire dataset) and
    * `seriesField` (which column `series` is matched against, default
-   * 'series'). Deep-merged with plotlyConfig.traces[i] (that wins) as a
-   * final override.
+   * 'series') -- both also settable via the node's own `series`/`seriesField`
+   * fields below (the Series Value/Series Column form fields); traceConfig
+   * setting either here wins over that field. Deep-merged with
+   * plotlyConfig.traces[i] (that wins) as a final override.
    *
    * heatmap/surface only: `x`/`y`/`z` are auto-reshaped (PlotlyChartControl
    * .tsx's gridifyTrace) from flat, equal-length arrays -- one row per (x, y)
@@ -586,17 +592,25 @@ export interface PanelNode {
    */
   traceConfig?: unknown
   /**
-   * plotly-trace, legacy only -- the pre-traceConfig form fields this node
-   * type used to be configured through. No longer editable (removed from
-   * the property schema); still typed and read by
+   * plotly-trace: the Series Value/Series Column form fields -- filters this
+   * trace down to the rows whose `seriesField` column (default 'series')
+   * equals `series`, for splitting one dataset into multiple traces without
+   * writing `series`/`seriesField` into Trace config JSON by hand (see
+   * traceConfig's own doc comment above; JSON wins if it sets either).
+   * `series` may reference ${param}.
+   */
+  series?: string
+  seriesField?: string
+  /**
+   * plotly-trace, legacy only -- the rest of the pre-traceConfig form fields
+   * this node type used to be configured through. No longer editable
+   * (removed from the property schema); still typed and read by
    * PlotlyChartControl.tsx's legacyTraceConfig so an already-saved trace
    * using them keeps rendering (via a render-time synthesized traceConfig,
    * never written back) until someone rewrites it as JSON by hand. The old
    * wide/pivoted heatmap mode (yField unset) and non-heatmap xColumns pivot
    * have no #column# equivalent and aren't carried over.
    */
-  series?: string
-  seriesField?: string
   xColumns?: string
   xField?: string
   yField?: string

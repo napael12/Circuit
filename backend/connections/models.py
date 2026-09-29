@@ -60,18 +60,47 @@ class DataConnection(models.Model):
     # type=s3: {"access_key": "...", "secret_key": "...", "region": "...",
     #   "bucket": "..." (optional, used by Test)}. Leave access_key/secret_key
     #   blank for anonymous access to a public bucket.
-    # type=http: {"auth_type": "none"|"basic"|"api_key"|"bearer"|"digest",
+    # type=http: {"auth_type": "none"|"basic"|"api_key"|"bearer"|"oauth"|"digest",
     #   "api_key_name": "...", "api_key_value": "...",
     #   "api_key_location": "header"|"query", "token": "...",
     #   "digest_algorithm": "MD5"|"SHA-256" (informational -- requests
     #   negotiates the actual algorithm from the server's own challenge),
     #   "headers": {"X-Custom": "..."}}.
+    #
+    # auth_type=oauth (specs/http-connection.md's OAuth addition -- Client
+    # Credentials grant; `url` above is the token endpoint):
+    #   "oauth_client_id": "...", "oauth_client_secret": "...",
+    #   "oauth_scope": "..." (optional),
+    #   "oauth_client_auth": "body"|"basic" (how client_id/secret are sent to
+    #     the token endpoint -- default "body"),
+    #   "oauth_body_mode": "form"|"json" (default "form" -- grant_type/
+    #     client_id/client_secret/scope/oauth_extra_params as a regular OAuth2
+    #     form-encoded request; "json" instead POSTs oauth_raw_body verbatim,
+    #     for a token endpoint that doesn't speak the standard shape),
+    #   "oauth_extra_params": {...} (form mode only -- merged into the
+    #     request body, e.g. an "audience" some providers require),
+    #   "oauth_raw_body": "..." (json mode only -- a literal JSON object,
+    #     as text; may reference ${VARIABLE} like every other config value
+    #     here). Either mode expects a JSON response with at least
+    #     "access_token" (and normally "expires_in"; missing/non-numeric
+    #     falls back to connections.backends.DEFAULT_OAUTH_TTL).
     config = EncryptedJSONField(default=dict, blank=True)
 
     # Common to every type (specs/connection.md): a cap on rows/records
     # retrieved per call, and a connect/request timeout.
     max_rows = models.IntegerField(null=True, blank=True, help_text='Blank = unlimited')
     timeout_seconds = models.IntegerField(default=30)
+
+    # type=http, auth_type=oauth only: the current access token and when it
+    # expires -- runtime cache state, not user-authored config, same
+    # separate-columns convention as e.g. Datastore.last_result/last_run_at.
+    # Persisted (not just cached in-memory) so it survives a process restart
+    # and is shared across worker processes, and refreshed lazily -- see
+    # connections.backends.HttpConnectionBackend.get_oauth_token -- only
+    # when something actually tries to use the connection, never by a
+    # background poller.
+    oauth_token = EncryptedTextField(blank=True)
+    oauth_token_expires_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

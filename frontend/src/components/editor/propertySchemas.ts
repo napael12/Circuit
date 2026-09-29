@@ -156,6 +156,18 @@ const PLOTLY_TRACE: FieldSchema[] = [
   { key: 'fieldDisplay', label: 'Name', type: 'text', help: "Legend name; blank falls back to Trace config's own \"name\", if any" },
   { key: 'hidden', label: 'Hidden', type: 'checkbox', help: 'Excludes this trace from the plot' },
   {
+    key: 'seriesField',
+    label: 'Series Column',
+    type: 'text',
+    help: "Datastore column holding each row's series identifier, for multiple traces off one dataset. Blank uses 'series'. Overridden by Trace config's own \"seriesField\" if it sets one",
+  },
+  {
+    key: 'series',
+    label: 'Series Value',
+    type: 'text',
+    help: 'Only rows whose Series Column equals this feed this trace -- filters one dataset down per trace. Blank = every row. May reference ${param}. Overridden by Trace config\'s own "series" if it sets one',
+  },
+  {
     key: 'traceConfig',
     label: 'Trace config',
     type: 'json',
@@ -163,7 +175,7 @@ const PLOTLY_TRACE: FieldSchema[] = [
       'This trace\'s Plotly object, authored as JSON (no code execution) -- any property, for any of: bar, box, candlestick, heatmap, histogram, pie, scatter, surface (anything else falls back to scatter). ' +
       'A value that\'s only "#columnName#" becomes an array of that datastore column\'s value, one per row (x, y, z, open/high/low/close, labels, values, marker.size, marker.color, ...). ' +
       'A value mixing "#columnName#" with other text becomes one formatted string per row (for text/hovertext). Any other string may reference ${param}. ' +
-      'Two reserved keys select which rows feed this trace rather than being passed to Plotly: "series" (only rows whose "seriesField" column -- default \'series\' -- equals it; blank/absent = every row) and "seriesField". ' +
+      'Two reserved keys select which rows feed this trace rather than being passed to Plotly -- same as the Series Column/Series Value fields above, just here instead if you\'d rather keep it all in JSON: "series" (only rows whose "seriesField" column -- default \'series\' -- equals it; blank/absent = every row) and "seriesField". ' +
       'Examples -- line: {"type":"scatter","mode":"lines","x":"#date#","y":"#price#"}. bar: {"type":"bar","x":"#category#","y":"#value#"}. ' +
       'bubble: {"type":"scatter","mode":"markers","x":"#x#","y":"#y#","marker":{"size":"#size#"}}. pie: {"type":"pie","labels":"#category#","values":"#amount#"}. ' +
       'box: {"type":"box","y":"#value#","x":"#group#"}. histogram: {"type":"histogram","x":"#value#"}. ' +
