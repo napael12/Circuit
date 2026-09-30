@@ -461,10 +461,10 @@ export interface PanelNode {
    * existed.
    */
   signalOnUpdate?: boolean | 'neutral' | 'green-up-red-down' | 'red-up-green-down'
-  /** datatable only -- display-only transpose: each column becomes a row and each (first 10) source row a column. Footer totals, tree rows, grouping, filters and Signal on Update are ignored while on. */
+  /** datatable only -- display-only transpose: each column becomes a row and each (first 10) source row a column, headed "#1", "#2", .... Footer totals, tree rows, grouping, filters and Signal on Update are ignored while on. */
   transpose?: boolean
-  /** datatable transpose only -- datastore field whose value heads each transposed column. Blank -> "#1", "#2", ... */
-  transposeHeaderField?: string
+  /** datatable transpose only -- min width (px) of each value cell (r0..rN -- the field-name/label cell is sized by its own column's transposeHeaderMinWidth instead, see below). */
+  transposeCellMinWidth?: number
   treeRows?: boolean
   treeIdField?: string
   treeParentField?: string
@@ -506,6 +506,19 @@ export interface PanelNode {
   filterType?: 'text' | 'selector'
   /** datatable-column only -- CSS declarations ("color: gray; font-weight: bold") applied to every cell in the column, same free-form convention as kpi-column's headerStyle/bodyStyle/footerStyle (see utils/panelFormat.ts's parseCssText). */
   style?: string
+  /**
+   * datatable-column, datatable's own Transpose only -- when the datatable
+   * is transposed, this column becomes one row, and this styles/sizes *that
+   * row's own field-name/label cell* specifically (distinct from `style`
+   * above, which -- in transpose mode -- still applies to every cell in the
+   * row, label cell included; this is layered on top of it there). CSS
+   * declarations, same convention as `style`.
+   */
+  transposeHeaderStyle?: string
+  /** datatable-column, datatable's own Transpose only -- min width (px) of this column's own label cell when transposed. */
+  transposeHeaderMinWidth?: number
+  /** datatable-column, datatable's own Transpose only -- wraps this column's label text onto multiple lines instead of clipping it when transposed. */
+  transposeHeaderWrap?: boolean
   totalExpession?: 'sum' | 'avg' | 'min' | 'max'
   pinnable?: boolean
   /** datatable-column only -- excludes this column from the rendered table (header/cells/footer) when checked. */

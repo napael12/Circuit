@@ -169,7 +169,11 @@ export function DatatableControl({ component, datastores, previewMode }: Control
   const columns = useMemo(() => {
     const onLinkedCellClick = (col: PanelNode, value: unknown) =>
       setParameter(col.parameter!, value == null ? '' : String(value), component.id)
-    if (transpose) return buildTransposedColumns(rows, component.transposeHeaderField, onLinkedCellClick)
+    if (transpose) {
+      return buildTransposedColumns(rows, onLinkedCellClick, {
+        cellMinWidth: component.transposeCellMinWidth,
+      })
+    }
     return buildColumns(component.columns, rows, {
       treeToggle: treeMode || isGrouped,
       onLinkedCellClick,
@@ -181,7 +185,7 @@ export function DatatableControl({ component, datastores, previewMode }: Control
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     transpose,
-    component.transposeHeaderField,
+    component.transposeCellMinWidth,
     component.columns,
     rows,
     treeMode,

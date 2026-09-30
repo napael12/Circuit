@@ -366,6 +366,16 @@ export function EditorPage() {
     setContent((c) => ({ ...c, parameters: c.parameters.filter((p) => p.name !== paramName) }))
     if (selection?.kind === 'parameter' && selection.name === paramName) setSelection(null)
   }
+  const moveParameter = (paramName: string, edge: 'up' | 'down') => {
+    setContent((c) => {
+      const params = c.parameters.slice()
+      const index = params.findIndex((p) => p.name === paramName)
+      const target = edge === 'up' ? index - 1 : index + 1
+      if (index === -1 || target < 0 || target >= params.length) return c
+      ;[params[index], params[target]] = [params[target], params[index]]
+      return { ...c, parameters: params }
+    })
+  }
   const copyParameter = async (paramName: string) => {
     const param = content.parameters.find((p) => p.name === paramName)
     if (!param) return
@@ -842,6 +852,7 @@ export function EditorPage() {
               onSelect={setSelection}
               onAddParameter={addParameter}
               onDeleteParameter={deleteParameter}
+              onMoveParameter={moveParameter}
               onCopyParameter={copyParameter}
               onPasteParameter={pasteParameter}
               onViewJsonParameter={setViewJsonParamName}

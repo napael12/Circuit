@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronRight, ClipboardPaste, Plus } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, ClipboardPaste, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -28,6 +28,7 @@ interface Props {
   onSelect: (selection: Selection) => void
   onAddParameter: () => void
   onDeleteParameter: (name: string) => void
+  onMoveParameter: (name: string, edge: 'up' | 'down') => void
   onCopyParameter: (name: string) => void
   onPasteParameter: () => void
   onViewJsonParameter: (name: string) => void
@@ -72,6 +73,7 @@ export function ComponentTree({
   onSelect,
   onAddParameter,
   onDeleteParameter,
+  onMoveParameter,
   onCopyParameter,
   onPasteParameter,
   onViewJsonParameter,
@@ -109,7 +111,7 @@ export function ComponentTree({
   return (
     <div className="flex-1 overflow-y-auto py-1">
       <Section label="Parameters" isOpen={open.parameters} onToggle={() => toggle('parameters')} onAdd={onAddParameter} onPaste={onPasteParameter}>
-        {parameters.map((p) => (
+        {parameters.map((p, index) => (
           <LeafRow
             key={p.name}
             label={p.label || p.name}
@@ -119,6 +121,9 @@ export function ComponentTree({
             onCopy={() => onCopyParameter(p.name)}
             onPaste={onPasteParameter}
             onViewJson={() => onViewJsonParameter(p.name)}
+            onMove={(edge) => onMoveParameter(p.name, edge)}
+            isFirst={index === 0}
+            isLast={index === parameters.length - 1}
             viewJsonLabel="Edit JSON"
           />
         ))}
@@ -354,6 +359,9 @@ function LeafRow({
   onCopy,
   onPaste,
   onViewJson,
+  onMove,
+  isFirst,
+  isLast,
   viewJsonLabel = 'View JSON',
 }: {
   label: string
@@ -364,6 +372,10 @@ function LeafRow({
   onCopy?: () => void
   onPaste: () => void
   onViewJson: () => void
+  /** Omit to hide Move up/down entirely -- only Parameters currently supports reordering here (Datastores/Links are referenced by name, not position). */
+  onMove?: (edge: 'up' | 'down') => void
+  isFirst?: boolean
+  isLast?: boolean
   viewJsonLabel?: string
 }) {
   const row = (
@@ -375,6 +387,36 @@ function LeafRow({
       )}
     >
       <span className="grow truncate">{label}</span>
+      {onMove && (
+        <>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Move up"
+            title="Move up"
+            disabled={isFirst}
+            onClick={(e) => {
+              e.stopPropagation()
+              onMove('up')
+            }}
+          >
+            <ArrowUp />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Move down"
+            title="Move down"
+            disabled={isLast}
+            onClick={(e) => {
+              e.stopPropagation()
+              onMove('down')
+            }}
+          >
+            <ArrowDown />
+          </Button>
+        </>
+      )}
     </div>
   )
 
@@ -384,6 +426,17 @@ function LeafRow({
       <ContextMenuContent>
         {onCopy && <ContextMenuItem onClick={onCopy}>Copy</ContextMenuItem>}
         <ContextMenuItem onClick={onPaste}>Paste</ContextMenuItem>
+        {onMove && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem disabled={isFirst} onClick={() => onMove('up')}>
+              Move up
+            </ContextMenuItem>
+            <ContextMenuItem disabled={isLast} onClick={() => onMove('down')}>
+              Move down
+            </ContextMenuItem>
+          </>
+        )}
         <ContextMenuSeparator />
         <ContextMenuItem onClick={onViewJson}>{viewJsonLabel}</ContextMenuItem>
         <ContextMenuSeparator />
@@ -399,6 +452,8 @@ function NodeRow({
   node,
   depth,
   isRoot,
+  isFirst,
+  isLast,
   parentType,
   selection,
   expanded,
@@ -417,6 +472,9 @@ function NodeRow({
   node: PanelNode
   depth: number
   isRoot?: boolean
+  /** Among this node's own siblings -- gates the Move up/down icon buttons' disabled state. Unused (and irrelevant) for a root, which has no siblings and never shows them. */
+  isFirst?: boolean
+  isLast?: boolean
   /** This node's own parent's type -- undefined for a root (no parent). Decides which of "Move To > Layout/Tab" are valid: whichever of those two types childTypesFor(parentType) actually accepts as a child. */
   parentType?: NodeType
   selection: Selection
@@ -470,6 +528,36 @@ function NodeRow({
       <span className="grow truncate py-0.5">
         {node.title || node.fieldDisplay || node.field || node.id} <span className="text-muted-foreground">({node.type})</span>
       </span>
+      {!isRoot && (
+        <>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Move up"
+            title="Move up"
+            disabled={isFirst}
+            onClick={(e) => {
+              e.stopPropagation()
+              onMove(node.id, 'up')
+            }}
+          >
+            <ArrowUp />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Move down"
+            title="Move down"
+            disabled={isLast}
+            onClick={(e) => {
+              e.stopPropagation()
+              onMove(node.id, 'down')
+            }}
+          >
+            <ArrowDown />
+          </Button>
+        </>
+      )}
       {addableTypes.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -551,11 +639,13 @@ function NodeRow({
         </ContextMenuContent>
       </ContextMenu>
       {isOpen &&
-        children.map((child) => (
+        children.map((child, index) => (
           <NodeRow
             key={child.id}
             node={child}
             depth={depth + 1}
+            isFirst={index === 0}
+            isLast={index === children.length - 1}
             parentType={node.type}
             selection={selection}
             expanded={expanded}

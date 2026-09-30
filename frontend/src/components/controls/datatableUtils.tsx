@@ -458,23 +458,66 @@ export function transposeRows(rows: DatatableRow[], columns: PanelNode[] | undef
   })
 }
 
-/** Column defs for transposeRows' output: a field-name column, then one per source row headed by `headerField`'s value (or "#n"). */
+/** DATATABLE-level Transpose display options (PanelNode.transposeCellMinWidth) -- see buildTransposedColumns. */
+export interface TransposeDisplayOptions {
+  cellMinWidth?: number
+}
+
+/**
+ * Column defs for transposeRows' output: a field-name column, then one per
+ * source row, headed "#1", "#2", .... `options.cellMinWidth` sizes the value
+ * cells uniformly (there's no per-column equivalent for *those*, since a
+ * value column here is a source row, not something the panel author
+ * configured); each value cell also gets its own source column's `style`
+ * (the same per-column CSS field datatable-column's own cells use in
+ * non-transposed mode). The field-name/label column is different -- each
+ * row's label cell *is* one specific datatable-column, so its own
+ * transposeHeaderStyle/transposeHeaderMinWidth/transposeHeaderWrap apply
+ * per row there (there's no shared "header row" concept to speak of for a
+ * label column; the actual #1/#2/... header cells above the value columns
+ * are plain, unstyled -- they correspond to source rows, not to any one
+ * configured column, so nothing here targets them).
+ */
 export function buildTransposedColumns<TData extends DatatableRow = DatatableRow>(
   sourceRows: DatatableRow[],
-  headerField: string | undefined,
   onLinkedCellClick?: (col: PanelNode, value: unknown, row: DatatableRow) => void,
+  options: TransposeDisplayOptions = {},
 ): ColumnDef<DataGridFeatures, TData>[] {
   const source = sourceRows.slice(0, TRANSPOSE_MAX_ROWS)
+  const dataCellStyle = (col: PanelNode): CSSProperties => ({
+    ...(options.cellMinWidth ? { minWidth: options.cellMinWidth } : {}),
+    ...alignStyle(col.align),
+    ...parseCssText(col.style ?? ''),
+  })
+  // The label cell gets the column's general `style` (same as every other
+  // cell in its row -- see dataCellStyle) first, then transposeHeaderStyle/
+  // transposeHeaderMinWidth layered on top, since those are specifically
+  // about this one cell and should win on any overlapping property.
+  const labelCellStyle = (col: PanelNode): CSSProperties => ({
+    ...parseCssText(col.style ?? ''),
+    ...(col.transposeHeaderMinWidth ? { minWidth: col.transposeHeaderMinWidth } : {}),
+    ...parseCssText(col.transposeHeaderStyle ?? ''),
+  })
+
   const labelCol: ColumnDef<DataGridFeatures, TData> = {
     id: TRANSPOSE_LABEL_KEY,
     accessorFn: (row) => (row as Record<string, unknown>)[TRANSPOSE_LABEL_KEY],
     header: ({ column }) => <DataGridColumnHeader column={column} title="" />,
     enableColumnFilter: false,
-    cell: ({ getValue }) => <span className="font-medium">{String(getValue() ?? '')}</span>,
+    cell: ({ row, getValue }) => {
+      const col = (row.original as Record<string, unknown>)[TRANSPOSE_COL_KEY] as PanelNode
+      return (
+        <span
+          className={['font-medium', col.transposeHeaderWrap ? 'whitespace-normal break-words' : ''].filter(Boolean).join(' ')}
+          style={labelCellStyle(col)}
+        >
+          {String(getValue() ?? '')}
+        </span>
+      )
+    },
   }
-  const valueCols = source.map((row, i): ColumnDef<DataGridFeatures, TData> => {
-    const headerValue = headerField ? getFieldValue(row, headerField) : undefined
-    const title = headerValue == null || headerValue === '' ? `#${i + 1}` : String(headerValue)
+  const valueCols = source.map((_row, i): ColumnDef<DataGridFeatures, TData> => {
+    const title = `#${i + 1}`
     return {
       id: `r${i}`,
       accessorFn: (r) => (r as Record<string, unknown>)[`r${i}`],
@@ -485,14 +528,10 @@ export function buildTransposedColumns<TData extends DatatableRow = DatatableRow
         const col = (row.original as Record<string, unknown>)[TRANSPOSE_COL_KEY] as PanelNode
         const value = getValue()
         const content = renderCellContent(value, col)
-        if (!col.parameter || !onLinkedCellClick) return <span style={alignStyle(col.align)}>{content}</span>
+        const style = dataCellStyle(col)
+        if (!col.parameter || !onLinkedCellClick) return <span style={style}>{content}</span>
         return (
-          <button
-            type="button"
-            className="text-primary hover:underline"
-            style={alignStyle(col.align)}
-            onClick={() => onLinkedCellClick(col, value, source[i])}
-          >
+          <button type="button" className="text-primary hover:underline" style={style} onClick={() => onLinkedCellClick(col, value, source[i])}>
             {content}
           </button>
         )

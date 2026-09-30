@@ -74,7 +74,12 @@ const DATATABLE: FieldSchema[] = [
     help: "Dataset must include unique 'id' field. Directional modes color a numeric increase/decrease; a non-numeric change always flashes neutral (amber)",
   },
   { key: 'transpose', label: 'Transpose', type: 'checkbox', help: 'Columns become rows and rows become columns. Display is capped to 10 rows. Footer totals, tree rows, grouping, filters and Signal on Update are not supported' },
-  { key: 'transposeHeaderField', label: 'Transpose header field', type: 'text', help: 'Transpose only -- datastore field used as each column\'s header; blank shows #1, #2, ...' },
+  {
+    key: 'transposeCellMinWidth',
+    label: 'Transposed Cell Min Width',
+    type: 'number',
+    help: 'Transpose only -- min width (px) of each value cell (r0..rN). A column\'s own field-name/label cell is sized by that column\'s own Transpose Header Min Width instead',
+  },
   { key: 'treeRows', label: 'Tree rows', type: 'checkbox' },
   { key: 'treeIdField', label: 'Row id field', type: 'text', help: 'treeRows only -- defaults to "id"' },
   { key: 'treeParentField', label: 'Parent id field', type: 'text', help: 'treeRows only -- defaults to "parentId"' },
@@ -105,6 +110,24 @@ const DATATABLE_COLUMN: FieldSchema[] = [
   { key: 'parameter', label: 'Sets parameter', type: 'text', help: 'Row click sets this panel parameter' },
   { key: 'filterType', label: 'Filter type', type: 'select', options: ['text', 'selector'], noneLabel: 'No filter' },
   { key: 'style', label: 'Style', type: 'text', help: 'CSS declarations, e.g. "color: gray; font-weight: bold" -- applied to every cell in the column' },
+  {
+    key: 'transposeHeaderStyle',
+    label: 'Transpose Header Style',
+    type: 'text',
+    help: 'Datatable\'s own Transpose only -- CSS declarations applied to this column\'s own field-name/label cell when transposed (layered on top of Style above)',
+  },
+  {
+    key: 'transposeHeaderMinWidth',
+    label: 'Transpose Header Min Width',
+    type: 'number',
+    help: 'Datatable\'s own Transpose only -- min width (px) of this column\'s own label cell when transposed',
+  },
+  {
+    key: 'transposeHeaderWrap',
+    label: 'Wrap Header Text',
+    type: 'checkbox',
+    help: 'Datatable\'s own Transpose only -- wraps this column\'s label text onto multiple lines instead of clipping it when transposed',
+  },
   { key: 'totalExpession', label: 'Total', type: 'select', options: ['sum', 'avg', 'min', 'max'] },
   { key: 'pinnable', label: 'Pinnable', type: 'checkbox' },
   {
