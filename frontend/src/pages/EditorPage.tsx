@@ -922,6 +922,7 @@ export function EditorPage() {
                     datastores={content.datastores}
                     content={content.content}
                     panelId={panelId}
+                    previewMode
                     key={content.parameters.map((p) => p.name).join(',')}
                   >
                     {/* LinkProvider outermost: DrilldownProvider's own popup dialog

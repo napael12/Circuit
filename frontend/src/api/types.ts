@@ -11,6 +11,8 @@ export interface DatastorePreviewResult {
   ok: boolean
   data?: unknown
   message?: string
+  /** Set Parameter's computed value (see Datastore.set_parameter_name) -- null/absent when that's unset. */
+  set_parameter_value?: string | null
 }
 
 export interface DataConnection {
@@ -140,6 +142,20 @@ export interface Datastore {
    * renderer_type=fixed_width: {fields: RendererField[]}.
    */
   renderer_config: Record<string, unknown>
+  /**
+   * "Set Parameter": whenever this datastore's data loads -- for any control
+   * bound to it, or headlessly with no control at all (see
+   * ParameterSourceDatastores.tsx) -- the *entire* fetch is written into the
+   * named panel parameter, serialized to one string: source_type=query ->
+   * the rows, JSON-encoded; source_type=serialized -> the raw fetched
+   * content exactly as retrieved (its own native json/xml/delimited text),
+   * not the rendered rows. Blank = disabled. Applies regardless of scope.
+   * The actual computed value rides along on the datastore's own data/
+   * preview response as `set_parameter_value` (see DatastorePreviewResult
+   * and useDatastore's UseDatastoreResult) -- this field only names the
+   * target parameter.
+   */
+  set_parameter_name: string
   default_params: Record<string, unknown>
   /** specs/api_datastore.md: public API access via the pull/push endpoints. 'push' is only valid for source_type='serialized' using the JSON renderer. */
   api_mode: 'none' | 'pull' | 'push'
@@ -374,6 +390,7 @@ export interface PanelDatastoreRef {
   file_expression?: string
   renderer_type?: RendererType
   renderer_config?: Record<string, unknown>
+  set_parameter_name?: string
   default_params?: Record<string, string>
 }
 
@@ -515,10 +532,8 @@ export interface PanelNode {
    * declarations, same convention as `style`.
    */
   transposeHeaderStyle?: string
-  /** datatable-column, datatable's own Transpose only -- min width (px) of this column's own label cell when transposed. */
+  /** datatable-column, datatable's own Transpose only -- min width (px) of this column's own label cell when transposed. Its text always wraps rather than clipping. */
   transposeHeaderMinWidth?: number
-  /** datatable-column, datatable's own Transpose only -- wraps this column's label text onto multiple lines instead of clipping it when transposed. */
-  transposeHeaderWrap?: boolean
   totalExpession?: 'sum' | 'avg' | 'min' | 'max'
   pinnable?: boolean
   /** datatable-column only -- excludes this column from the rendered table (header/cells/footer) when checked. */

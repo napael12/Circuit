@@ -116,6 +116,7 @@ export function DatastoreDialog({
   // (breadboard.public_api.PushDatastoreView) -- only while this datastore's
   // own renderer is JSON.
   const pushEligible = sourceType === 'serialized' && effectiveRendererType === 'json'
+  const [setParameterName, setSetParameterName] = useState(initial?.set_parameter_name ?? '')
   const [apiMode, setApiMode] = useState<Datastore['api_mode']>(initial?.api_mode ?? 'none')
   const [refreshMode, setRefreshMode] = useState<Datastore['refresh_mode']>(initial?.refresh_mode ?? 'on_demand')
   const [cronSchedule, setCronSchedule] = useState(initial?.cron_schedule ?? '')
@@ -277,6 +278,7 @@ export function DatastoreDialog({
     file_expression: sourceType === 'serialized' && accessType === 'file' ? fileExpression : '',
     renderer_type: sourceType === 'serialized' ? effectiveRendererType : 'none',
     renderer_config: sourceType === 'serialized' ? rendererConfig : {},
+    set_parameter_name: setParameterName,
     default_params: defaultParams,
     // Push is only ever meaningful for serialized datastores using the JSON
     // renderer (enforced again server-side in DatastoreSerializer.validate)
@@ -322,6 +324,7 @@ export function DatastoreDialog({
     file_expression: sourceType === 'serialized' && accessType === 'file' ? fileExpression : '',
     renderer_type: sourceType === 'serialized' ? effectiveRendererType : 'none',
     renderer_config: sourceType === 'serialized' ? rendererConfig : {},
+    set_parameter_name: setParameterName,
     default_params: defaultParams,
   })
 
@@ -507,6 +510,18 @@ export function DatastoreDialog({
                 className="h-8 text-[0.85em]"
               />
             </Field>
+
+            <Field
+              label="Set parameter"
+              helperText="Panel parameter to write this datastore's entire result into, whenever its data loads -- with or without a control displaying it. SQL: the rows, as JSON. Serialized: the raw fetched content as-is (its own native JSON/XML/delimited text). Blank = disabled"
+            >
+              <Input
+                value={setParameterName}
+                onChange={(e) => setSetParameterName(e.target.value)}
+                className="h-8 font-mono text-[0.85em]"
+              />
+            </Field>
+
             {!isLocal && (
               <>
                 <Field

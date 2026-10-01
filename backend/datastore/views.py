@@ -24,8 +24,8 @@ def _preview_limit(data) -> int:
 
 def _run_preview(ds: Datastore, data) -> Response:
     try:
-        result = run_datastore(ds, data.get('params'), row_limit=_preview_limit(data))
-        return Response({'ok': True, 'data': result})
+        result, set_parameter_value = run_datastore(ds, data.get('params'), row_limit=_preview_limit(data))
+        return Response({'ok': True, 'data': result, 'set_parameter_value': set_parameter_value})
     except Exception as exc:  # noqa: BLE001 - surface any driver/query/HTTP error to the UI
         return Response({'ok': False, 'message': str(exc)})
 
@@ -55,8 +55,8 @@ class DatastoreViewSet(ModelViewSet):
         ds = self.get_object()
         if ds.refresh_mode == Datastore.REFRESH_SCHEDULED:
             return Response({'data': ds.last_result, 'last_run_at': ds.last_run_at})
-        result = run_datastore(ds, request.data)
-        return Response({'data': result})
+        result, set_parameter_value = run_datastore(ds, request.data)
+        return Response({'data': result, 'set_parameter_value': set_parameter_value})
 
     @action(detail=True, methods=['post'], url_path='clear-cache')
     def clear_cache(self, request, pk=None):
@@ -106,6 +106,7 @@ class DatastoreViewSet(ModelViewSet):
             file_expression=data.get('file_expression') or '',
             renderer_type=data.get('renderer_type') or Datastore.RENDERER_NONE,
             renderer_config=data.get('renderer_config') or {},
+            set_parameter_name=data.get('set_parameter_name') or '',
             default_params=data.get('default_params') or {},
         )
         return _run_preview(ds, data)
@@ -140,6 +141,7 @@ class DatastoreViewSet(ModelViewSet):
             file_expression=original.file_expression,
             renderer_type=original.renderer_type,
             renderer_config=original.renderer_config,
+            set_parameter_name=original.set_parameter_name,
             default_params=original.default_params,
             refresh_mode=original.refresh_mode,
             cron_schedule=original.cron_schedule,

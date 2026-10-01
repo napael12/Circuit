@@ -138,7 +138,9 @@ class PullDatastoreView(APIView):
 
         fmt = (_request_value(request, 'format') or 'json').lower()
         try:
-            result = run_datastore(ds, _merged_params(request))
+            # The public pull API has no "parameter" concept of its own to write
+            # set_parameter_value into -- discarded here, same as the scheduler.
+            result, _ = run_datastore(ds, _merged_params(request))
         except Exception as exc:  # noqa: BLE001 - surface any driver/query/HTTP error to the caller
             _log(request, pk, ApiKeyUsage.MODE_PULL, False, str(exc)[:255])
             return Response({'detail': str(exc)}, status=400)

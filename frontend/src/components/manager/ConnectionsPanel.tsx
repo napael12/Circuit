@@ -18,9 +18,11 @@ import { SelectorColumnFilter, TextColumnFilter } from '../reui/data-grid/data-g
 import { api } from '../../api/client'
 import type { ConnectionTestResult, DataConnection, Role } from '../../api/types'
 import { downloadJson, readSingleItemJson } from '../../utils/importExport'
+import { useManagerGridInitialState, usePersistManagerGridState } from '../../hooks/useManagerGridState'
 import { CloneDialog } from './CloneDialog'
 import { CONNECTION_TYPE_ICONS, ConnectionDialog } from './ConnectionDialog'
 import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
+import { ManagerSearchBox } from './ManagerSearchBox'
 
 const PRIMARY_CELL_CLASS = 'text-blue-600 dark:text-blue-500 font-medium'
 
@@ -214,11 +216,20 @@ export function ConnectionsPanel({ roles }: { roles: Role[] }) {
     [],
   )
 
-  const table = useTable({ features: dataGridFeatures, columns, data: rows, getRowId: (row) => row.id, initialState: managerGridInitialState })
+  const initialState = useManagerGridInitialState('connections')
+  const table = useTable({
+    features: dataGridFeatures,
+    columns,
+    data: rows,
+    getRowId: (row) => row.id,
+    initialState: { ...managerGridInitialState, ...initialState },
+  })
+  usePersistManagerGridState(table, 'connections')
 
   return (
     <div className="flex h-full flex-col">
       <div className="mb-2 flex items-center gap-2">
+        <ManagerSearchBox table={table} placeholder="Search connections…" />
         <div className="grow" />
         <Button variant="outline" size="sm" onClick={() => importInputRef.current?.click()}>
           <Upload />

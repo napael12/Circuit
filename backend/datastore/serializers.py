@@ -20,7 +20,8 @@ class DatastoreSerializer(serializers.ModelSerializer):
             'row_limit', 'cache_seconds', 'object_key', 'object_url', 'body',
             'data_url', 'request_method', 'request_params', 'request_body',
             'file_path', 'file_expression', 'renderer_type',
-            'renderer_config', 'default_params', 'api_mode', 'refresh_mode', 'cron_schedule',
+            'renderer_config', 'set_parameter_name',
+            'default_params', 'api_mode', 'refresh_mode', 'cron_schedule',
             'idle_timeout_seconds', 'is_active',
             'last_run_at', 'last_error', 'created_at', 'updated_at', 'allowed_roles',
         ]

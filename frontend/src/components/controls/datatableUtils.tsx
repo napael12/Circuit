@@ -361,7 +361,26 @@ export function buildColumns<TData extends DatatableRow = DatatableRow>(
       // sits as dead blank filler (DataGridTableFillCol) instead of being
       // put to use, most noticeably right after a column is hidden (see
       // PanelNode.hidden) and its width is freed up.
-      meta: index === cols.length - 1 ? { autoSize: true } : undefined,
+      meta: {
+        ...(index === cols.length - 1 ? { autoSize: true } : undefined),
+        // Header labels always wrap instead of overflowing into the next
+        // column (the bug this fixes: long labels like "Original Language"
+        // visibly spilling over "Popularity"). DataGridColumnHeader renders
+        // the label inside a shadcn Button (sortable/has-controls columns)
+        // or a plain div (neither) -- both are nested *inside* the <th>, in
+        // a separate className than the one set here, so a plain cn()
+        // override on this string can't reach them; headerClassName lands
+        // on the <th> itself, so descendant selectors are used instead to
+        // override Button's own hardcoded shrink-0/whitespace-nowrap/h-6
+        // without touching the shared Button/DataGridColumnHeader files
+        // (which every other grid in the app also renders through).
+        headerClassName:
+          'h-auto py-2 align-top ' +
+          '[&_*]:whitespace-normal [&_*]:break-words ' +
+          '[&_button]:h-auto [&_button]:min-h-6 [&_button]:w-full [&_button]:shrink ' +
+          '[&_button]:justify-start [&_button]:text-left [&_button]:items-start ' +
+          '[&>div]:h-auto [&>div]:items-start',
+      },
       cell: ({ row, getValue }) => {
         const value = getValue()
         const content = renderCellContent(value, col)
@@ -472,11 +491,11 @@ export interface TransposeDisplayOptions {
  * (the same per-column CSS field datatable-column's own cells use in
  * non-transposed mode). The field-name/label column is different -- each
  * row's label cell *is* one specific datatable-column, so its own
- * transposeHeaderStyle/transposeHeaderMinWidth/transposeHeaderWrap apply
- * per row there (there's no shared "header row" concept to speak of for a
- * label column; the actual #1/#2/... header cells above the value columns
- * are plain, unstyled -- they correspond to source rows, not to any one
- * configured column, so nothing here targets them).
+ * transposeHeaderStyle/transposeHeaderMinWidth apply per row there, and its
+ * text always wraps rather than clipping (there's no shared "header row"
+ * concept to speak of for a label column; the actual #1/#2/... header cells
+ * above the value columns are plain, unstyled -- they correspond to source
+ * rows, not to any one configured column, so nothing here targets them).
  */
 export function buildTransposedColumns<TData extends DatatableRow = DatatableRow>(
   sourceRows: DatatableRow[],
@@ -507,10 +526,10 @@ export function buildTransposedColumns<TData extends DatatableRow = DatatableRow
     cell: ({ row, getValue }) => {
       const col = (row.original as Record<string, unknown>)[TRANSPOSE_COL_KEY] as PanelNode
       return (
-        <span
-          className={['font-medium', col.transposeHeaderWrap ? 'whitespace-normal break-words' : ''].filter(Boolean).join(' ')}
-          style={labelCellStyle(col)}
-        >
+        // block w-full: a plain inline span sizes to fit its own content
+        // regardless of white-space, so without this the wrap below has
+        // nothing to actually wrap against.
+        <span className="block w-full font-medium whitespace-normal break-words" style={labelCellStyle(col)}>
           {String(getValue() ?? '')}
         </span>
       )

@@ -20,7 +20,9 @@ import { ApiKeyUsageDialog } from './ApiKeyUsageDialog'
 import { CreateApiKeyDialog } from './CreateApiKeyDialog'
 import { api } from '../../api/client'
 import type { ApiKey, AppUser } from '../../api/types'
+import { useManagerGridInitialState, usePersistManagerGridState } from '../../hooks/useManagerGridState'
 import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
+import { ManagerSearchBox } from './ManagerSearchBox'
 
 interface Props {
   users: AppUser[]
@@ -162,11 +164,20 @@ export function ApiKeysPanel({ users }: Props) {
     [],
   )
 
-  const table = useTable({ features: dataGridFeatures, columns, data: rows, getRowId: (row) => row.id, initialState: managerGridInitialState })
+  const initialState = useManagerGridInitialState('api-keys')
+  const table = useTable({
+    features: dataGridFeatures,
+    columns,
+    data: rows,
+    getRowId: (row) => row.id,
+    initialState: { ...managerGridInitialState, ...initialState },
+  })
+  usePersistManagerGridState(table, 'api-keys')
 
   return (
     <div className="flex h-full flex-col">
       <div className="mb-2 flex items-center gap-2">
+        <ManagerSearchBox table={table} placeholder="Search API keys…" />
         <div className="grow" />
         <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)}>
           <Plus />

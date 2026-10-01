@@ -167,6 +167,20 @@ class Datastore(models.Model):
     renderer_type = models.CharField(max_length=15, choices=RENDERER_CHOICES, default=RENDERER_NONE, blank=True)
     renderer_config = models.JSONField(default=dict, blank=True)
 
+    # "Set Parameter": whenever this datastore's data is (re)fetched -- by any
+    # control bound to it, or headlessly with no control at all, see frontend
+    # ParameterSourceDatastores.tsx -- the *entire* fetch is written into the
+    # panel parameter named here, serialized into one string (see
+    # services._run_uncached's set_parameter_value): source_type=query -> the
+    # rows, JSON-encoded; source_type=serialized -> the raw fetched content
+    # exactly as retrieved (its own native json/xml/delimited text), not the
+    # rendered rows. Blank (the default) = disabled. The actual write to the
+    # parameter store only ever happens client-side (parameters are
+    # browser-side state, not server state) -- this field just names the
+    # target; run_datastore() computes the value but never writes it anywhere
+    # itself.
+    set_parameter_name = models.CharField(max_length=100, blank=True)
+
     # name -> default value, for any ${param} referenced across this
     # datastore's own metadata (SQL text, object_key, data_url, renderer_config, etc).
     default_params = models.JSONField(default=dict, blank=True)

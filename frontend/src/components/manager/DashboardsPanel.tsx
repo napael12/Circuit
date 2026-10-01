@@ -22,7 +22,9 @@ import { api } from '../../api/client'
 import type { Panel } from '../../api/types'
 import { downloadUrl } from '../../utils/importExport'
 import { openInNewWindow } from '../../utils/newWindow'
+import { useManagerGridInitialState, usePersistManagerGridState } from '../../hooks/useManagerGridState'
 import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
+import { ManagerSearchBox } from './ManagerSearchBox'
 
 const PRIMARY_CELL_CLASS = 'text-blue-600 dark:text-blue-500 font-medium'
 
@@ -240,11 +242,20 @@ export function DashboardsPanel() {
     [navigate],
   )
 
-  const table = useTable({ features: dataGridFeatures, columns, data: rows, getRowId: (row) => row.id, initialState: managerGridInitialState })
+  const initialState = useManagerGridInitialState('dashboards')
+  const table = useTable({
+    features: dataGridFeatures,
+    columns,
+    data: rows,
+    getRowId: (row) => row.id,
+    initialState: { ...managerGridInitialState, ...initialState },
+  })
+  usePersistManagerGridState(table, 'dashboards')
 
   return (
     <div className="flex h-full flex-col">
       <div className="mb-2 flex items-center gap-2">
+        <ManagerSearchBox table={table} placeholder="Search dashboards…" />
         <div className="grow" />
         <Button
           variant="outline"

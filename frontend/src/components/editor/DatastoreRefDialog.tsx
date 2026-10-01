@@ -46,6 +46,7 @@ function refToDatastore(ref: PanelDatastoreRef): Datastore {
     file_expression: ref.file_expression ?? '',
     renderer_type: ref.renderer_type ?? 'none',
     renderer_config: ref.renderer_config ?? {},
+    set_parameter_name: ref.set_parameter_name ?? '',
     default_params: ref.default_params ?? {},
     api_mode: 'none',
     refresh_mode: 'on_demand',

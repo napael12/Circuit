@@ -303,10 +303,11 @@ class PanelViewSet(ModelViewSet):
             file_expression=local.get('file_expression') or '',
             renderer_type=local.get('renderer_type') or Datastore.RENDERER_NONE,
             renderer_config=local.get('renderer_config') or {},
+            set_parameter_name=local.get('set_parameter_name') or '',
             default_params=local.get('default_params') or {},
         )
-        result = run_datastore(ds, request.data.get('params'))
-        return Response({'data': result})
+        result, set_parameter_value = run_datastore(ds, request.data.get('params'))
+        return Response({'data': result, 'set_parameter_value': set_parameter_value})
 
     @action(detail=False, methods=['post'], permission_classes=[IsAdminOrReadOnly])
     def upload(self, request):

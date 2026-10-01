@@ -17,9 +17,11 @@ import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
 import { SelectorColumnFilter, TextColumnFilter } from '../reui/data-grid/data-grid-header-filters'
 import { api } from '../../api/client'
 import type { ConnectionTestResult } from '../../api/types'
+import { useManagerGridInitialState, usePersistManagerGridState } from '../../hooks/useManagerGridState'
 import type { FormField } from './formFields'
 import { RecordDialog } from './RecordDialog'
 import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
+import { ManagerSearchBox } from './ManagerSearchBox'
 
 export interface CrudColumn {
   field: string
@@ -242,17 +244,23 @@ export function CrudTable({
     [columns, onTestRow, onPreviewRow, onExportRow, onImportRow, idField],
   )
 
+  // CrudTable backs Users/Roles/Settings -- "title" ("Users", "Roles", ...)
+  // is the one thing that already uniquely names which section this is.
+  const section = title.toLowerCase()
+  const persistedState = useManagerGridInitialState(section)
   const table = useTable({
     features: dataGridFeatures,
     columns: gridColumns,
     data: rows,
     getRowId: (row) => String(row[idField]),
-    initialState: managerGridInitialState,
+    initialState: { ...managerGridInitialState, ...persistedState },
   })
+  usePersistManagerGridState(table, section)
 
   return (
     <div className="flex h-full flex-col">
       <div className="mb-2 flex items-center gap-2">
+        <ManagerSearchBox table={table} placeholder={`Search ${title.toLowerCase()}…`} />
         <div className="grow" />
         {headerActions}
         <Button variant="outline" size="sm" onClick={() => setEditing(null)}>

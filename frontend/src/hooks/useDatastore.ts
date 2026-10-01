@@ -27,6 +27,17 @@ interface UseDatastoreResult {
   /** refresh_mode=scheduled only: when the server last actually ran this datastore. */
   lastRunAt: string | null
   /**
+   * "Set Parameter" (see api/types.ts's Datastore.set_parameter_name doc
+   * comment) -- the target parameter name (null when unconfigured), and the
+   * already-computed value to write into it (the entire fetch, serialized --
+   * see services._run_uncached's set_parameter_value -- null while
+   * unconfigured or not yet loaded). Consumed by
+   * components/layout/ParameterSourceDatastores.tsx; this hook itself never
+   * writes to the parameter store, it only surfaces these two.
+   */
+  setParameterName: string | null
+  setParameterValue: string | null
+  /**
    * Re-runs this control's own on_demand datastore against its current
    * params, bypassing nothing else on the panel. A no-op for
    * refresh_mode='scheduled' (that data only ever changes via the
@@ -100,6 +111,7 @@ function useLocalDatastore(
   refreshToken: number,
 ): Omit<UseDatastoreResult, 'refresh'> {
   const [data, setData] = useState<unknown>(undefined)
+  const [setParameterValue, setSetParameterValue] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -132,12 +144,19 @@ function useLocalDatastore(
             limit: entry.row_limit ? Math.min(entry.row_limit, PREVIEW_MAX_ROWS) : PREVIEW_MAX_ROWS,
           })
           .then((res) => {
-            if (res.ok) return { data: res.data }
+            if (res.ok) return { data: res.data, set_parameter_value: res.set_parameter_value ?? null }
             throw new Error(res.message ?? 'Preview failed')
           })
-      : api.post<{ data: unknown }>(`/panels/${panelId}/local-datastore/`, { local_id: entry.id, params: relevantParams })
+      : api.post<{ data: unknown; set_parameter_value?: string | null }>(`/panels/${panelId}/local-datastore/`, {
+          local_id: entry.id,
+          params: relevantParams,
+        })
     request
-      .then((res) => !cancelled && setData(res.data))
+      .then((res) => {
+        if (cancelled) return
+        setData(res.data)
+        setSetParameterValue(res.set_parameter_value ?? null)
+      })
       .catch((err) => !cancelled && setError(String(err)))
       .finally(() => !cancelled && setLoading(false))
     return () => {
@@ -147,7 +166,15 @@ function useLocalDatastore(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry?.id, panelId, paramsKey, previewMode, refreshToken])
 
-  return { data, loading, error, refreshMode: entry ? 'on_demand' : null, lastRunAt: null }
+  return {
+    data,
+    loading,
+    error,
+    refreshMode: entry ? 'on_demand' : null,
+    lastRunAt: null,
+    setParameterName: entry?.set_parameter_name || null,
+    setParameterValue,
+  }
 }
 
 function useGlobalDatastore(
@@ -159,6 +186,8 @@ function useGlobalDatastore(
   const [refreshMode, setRefreshMode] = useState<Datastore['refresh_mode'] | null>(null)
   const [apiMode, setApiMode] = useState<Datastore['api_mode'] | null>(null)
   const [rowLimit, setRowLimit] = useState<number | null>(null)
+  const [setParameterName, setSetParameterName] = useState<string | null>(null)
+  const [setParameterValue, setSetParameterValue] = useState<string | null>(null)
   // null until the datastore's own referenced param names have loaded (see
   // below) -- until then every current param is used, same as before this
   // narrowing existed, so the very first fetch isn't missing a param.
@@ -184,6 +213,7 @@ function useGlobalDatastore(
         setRowLimit(ds.row_limit)
         setInitialLastRunAt(ds.last_run_at)
         setRelevantParamNames(paramNames)
+        setSetParameterName(ds.set_parameter_name || null)
       })
       .catch((err) => {
         if (!cancelled) {
@@ -215,12 +245,16 @@ function useGlobalDatastore(
             limit: rowLimit ? Math.min(rowLimit, PREVIEW_MAX_ROWS) : PREVIEW_MAX_ROWS,
           })
           .then((res) => {
-            if (res.ok) return { data: res.data }
+            if (res.ok) return { data: res.data, set_parameter_value: res.set_parameter_value ?? null }
             throw new Error(res.message ?? 'Preview failed')
           })
-      : api.post<{ data: unknown }>(`/datastores/${datastoreId}/data/`, relevantParams)
+      : api.post<{ data: unknown; set_parameter_value?: string | null }>(`/datastores/${datastoreId}/data/`, relevantParams)
     request
-      .then((res) => !cancelled && setDemandData(res.data))
+      .then((res) => {
+        if (cancelled) return
+        setDemandData(res.data)
+        setSetParameterValue(res.set_parameter_value ?? null)
+      })
       .catch((err) => !cancelled && setError(String(err)))
       .finally(() => !cancelled && setLoading(false))
     return () => {
@@ -250,5 +284,7 @@ function useGlobalDatastore(
     error,
     refreshMode,
     lastRunAt: usesSocket ? (pushedLastRunAt ?? initialLastRunAt) : null,
+    setParameterName,
+    setParameterValue,
   }
 }

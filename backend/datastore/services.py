@@ -157,7 +157,13 @@ def _fetch_serialized_file(ds: Datastore, params: dict) -> bytes | str:
         return f.read()
 
 
-def _fetch_serialized(ds: Datastore, params: dict) -> list[dict]:
+def _fetch_serialized_raw(ds: Datastore, params: dict) -> str:
+    """The raw fetched content, decoded to text if bytes -- i.e. the serialized
+    source's own native json/xml/delimited document, before Renderer parses it
+    into rows. Split out from _fetch_serialized so "Set Parameter" (which wants
+    this exact text, see Datastore.set_parameter_name) and normal rendering
+    share one fetch instead of hitting the HTTP/S3/File source twice.
+    """
     override = substitute_vars(ds.body, params)
     if override:
         raw = override
@@ -169,11 +175,13 @@ def _fetch_serialized(ds: Datastore, params: dict) -> list[dict]:
         raw = _fetch_serialized_file(ds, params)
     else:
         raise ValueError(f'Unknown access_type: {ds.access_type}')
-    return render_content(ds.renderer_type, raw, substitute_config(ds.renderer_config, params))
+    return raw.decode('utf-8') if isinstance(raw, (bytes, bytearray)) else raw
 
 
 def run_datastore(ds: Datastore, params: dict | None = None, row_limit: int | None = None, use_cache: bool = True):
-    """``row_limit``, when given, overrides ``ds.row_limit`` for this call only
+    """Returns ``(rows, set_parameter_value)`` -- see _run_uncached.
+
+    ``row_limit``, when given, overrides ``ds.row_limit`` for this call only
     -- used by the manager/editor "Preview" feature to cap results without
     touching the datastore's saved configuration.
 
@@ -193,24 +201,36 @@ def run_datastore(ds: Datastore, params: dict | None = None, row_limit: int | No
     return result
 
 
-def _run_uncached(ds: Datastore, merged_params: dict, row_limit: int | None):
+def _run_uncached(ds: Datastore, merged_params: dict, row_limit: int | None) -> tuple[list[dict], str | None]:
+    """Returns ``(rows, set_parameter_value)``. ``set_parameter_value`` is
+    None whenever ``ds.set_parameter_name`` is unset (the common case);
+    otherwise it's the *entire* fetch serialized into one string a parameter
+    can hold (see Datastore.set_parameter_name's doc comment):
+    source_type=query -> ``rows`` JSON-encoded; source_type=serialized ->
+    the raw fetched content exactly as retrieved, in its own native
+    json/xml/delimited text, *not* the rendered rows -- and not capped by
+    row_limit, which only ever applies to the rendered rows controls display.
+    """
     limit = ds.row_limit if row_limit is None else row_limit
+    wants_param = bool(ds.set_parameter_name)
 
     if ds.source_type == Datastore.SOURCE_QUERY:
         # ${name} is a literal text substitution (see breadboard.templating),
         # applied ahead of SQLAlchemy's own :name bound-parameter handling in
         # execute_query -- the two syntaxes can coexist in the same query.
         sql_text = substitute_vars(ds.sql_text(), merged_params)
-        return execute_query(ds.connection, sql_text, merged_params, limit)
+        result = execute_query(ds.connection, sql_text, merged_params, limit)
+        set_parameter_value = json.dumps(result, cls=DjangoJSONEncoder) if wants_param else None
+        return result, set_parameter_value
 
     if ds.source_type == Datastore.SOURCE_SERIALIZED:
-        result = _fetch_serialized(ds, merged_params)
-    else:
-        raise ValueError(f'Unknown source_type: {ds.source_type}')
+        raw = _fetch_serialized_raw(ds, merged_params)
+        result = render_content(ds.renderer_type, raw, substitute_config(ds.renderer_config, merged_params))
+        if limit is not None and isinstance(result, list):
+            result = result[:limit]
+        return result, (raw if wants_param else None)
 
-    if limit is not None and isinstance(result, list):
-        result = result[:limit]
-    return result
+    raise ValueError(f'Unknown source_type: {ds.source_type}')
 
 
 def refresh_scheduled(ds_id: str) -> None:
@@ -230,7 +250,10 @@ def refresh_scheduled(ds_id: str) -> None:
     if activity.is_idle(ds.id, ds.idle_timeout_seconds):
         return
     try:
-        result = run_datastore(ds, use_cache=False)
+        # set_parameter_value (the 2nd element) is only meaningful for an on-demand
+        # fetch reacting to a live viewer's own params -- a scheduled datastore runs
+        # on a fixed cron tick with no such viewer in the loop, so it's discarded here.
+        result, _ = run_datastore(ds, use_cache=False)
     except Exception as exc:  # noqa: BLE001 - surface any failure on the record
         ds.last_error = str(exc)
         ds.save(update_fields=['last_error'])
