@@ -14,6 +14,8 @@ interface Props {
   /** null = adding a new reference. */
   initial: PanelDatastoreRef | null
   globalDatastoreIds: string[]
+  /** This panel's own content.datastores -- supplies the 'local' scope options for Accessing Data = 'Datastore' (see DatastoreDialog's availableDatastoreRefs). */
+  panelDatastores: PanelDatastoreRef[]
   connections: DataConnection[]
   onClose: () => void
   onSave: (ref: PanelDatastoreRef) => void
@@ -25,7 +27,7 @@ interface Props {
  * refresh_mode, allowed_roles, ...) get fixed placeholder values since
  * DatastoreDialog hides those sections entirely under scope='local'.
  */
-function refToDatastore(ref: PanelDatastoreRef): Datastore {
+function refToDatastore(ref: PanelDatastoreRef): Datastore & { source_datastore_scope?: 'global' | 'local' } {
   return {
     id: ref.name,
     source_type: ref.source_type ?? 'query',
@@ -46,7 +48,8 @@ function refToDatastore(ref: PanelDatastoreRef): Datastore {
     file_expression: ref.file_expression ?? '',
     renderer_type: ref.renderer_type ?? 'none',
     renderer_config: ref.renderer_config ?? {},
-    set_parameter_name: ref.set_parameter_name ?? '',
+    source_datastore: ref.source_datastore ?? '',
+    source_datastore_scope: ref.source_datastore_scope,
     default_params: ref.default_params ?? {},
     api_mode: 'none',
     refresh_mode: 'on_demand',
@@ -71,7 +74,7 @@ function refToDatastore(ref: PanelDatastoreRef): Datastore {
  * panel's own JSON instead of saved via the API -- always on-demand, no
  * Access roles/API mode (see PanelDatastoreRef's own doc comment).
  */
-export function DatastoreRefDialog({ initial, globalDatastoreIds, connections, onClose, onSave }: Props) {
+export function DatastoreRefDialog({ initial, globalDatastoreIds, panelDatastores, connections, onClose, onSave }: Props) {
   const [mode, setMode] = useState<'existing' | 'local'>(initial?.scope === 'local' ? 'local' : 'existing')
   const [globalName, setGlobalName] = useState(initial?.scope === 'global' ? initial.name : '')
 
@@ -84,6 +87,11 @@ export function DatastoreRefDialog({ initial, globalDatastoreIds, connections, o
         connections={connections}
         onClose={onClose}
         onSaveLocal={onSave}
+        availableDatastoreRefs={[
+          ...globalDatastoreIds.map((name) => ({ name, scope: 'global' as const })),
+          ...panelDatastores.filter((d) => d.scope === 'local').map((d) => ({ name: d.name, scope: 'local' as const })),
+        ]}
+        localSiblings={panelDatastores}
       />
     )
   }

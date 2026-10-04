@@ -18,7 +18,7 @@ interface BrandingState {
   load: () => Promise<void>
 }
 
-export const DEFAULT_BRANDING: BrandingInfo = { name: 'Circuit', icon: '/circuit.png', favicon: '/circuit.png', version: '1.0.0' }
+export const DEFAULT_BRANDING: BrandingInfo = { name: 'Circuit', icon: '/static/circuit.png', favicon: '/static/circuit.png', version: '1.0.0' }
 
 export const useBrandingStore = create<BrandingState>((set) => ({
   branding: DEFAULT_BRANDING,

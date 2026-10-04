@@ -7,8 +7,8 @@ from django.db import migrations
 # these same values if a key is ever deleted).
 BRANDING_DEFAULTS = {
     'app.name': 'Circuit',
-    'app.icon': '/circuit.png',
-    'app.favicon': '/circuit.png',
+    'app.icon': '/static/circuit.png',
+    'app.favicon': '/static/circuit.png',
 }
 
 

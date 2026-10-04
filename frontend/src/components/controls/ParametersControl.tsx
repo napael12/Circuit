@@ -24,7 +24,14 @@ const noop = () => {}
  * are both no-ops here, same as HtmlControl.
  */
 export function ParametersControl({ component, datastores, previewMode }: ControlProps) {
-  const parameters = usePanelParameters()
+  const allParameters = usePanelParameters()
+  // PanelNode.parameterNames (specs/parameters2.md #2): this control's own
+  // subset + order, independent of the panel-wide list above. A name no
+  // longer valid (deleted, or now hidden -- usePanelParameters already
+  // excludes those) silently drops out rather than erroring.
+  const parameters = component.parameterNames?.length
+    ? (component.parameterNames.map((n) => allParameters.find((p) => p.name === n)).filter(Boolean) as typeof allParameters)
+    : allParameters
   const values = useAllParameterValues()
   const setParameter = useSetParameter()
   const horizontal = component.direction === 'horizontal'

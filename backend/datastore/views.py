@@ -10,7 +10,7 @@ from breadboard.slugs import unique_slug_id
 from .models import Datastore
 from .serializers import DatastoreSerializer
 from . import cache as result_cache
-from .services import run_datastore
+from .services import datastore_from_dict, run_datastore
 
 DEFAULT_PREVIEW_LIMIT = 10
 
@@ -22,10 +22,10 @@ def _preview_limit(data) -> int:
         return DEFAULT_PREVIEW_LIMIT
 
 
-def _run_preview(ds: Datastore, data) -> Response:
+def _run_preview(ds: Datastore, data, local_datastores: dict[str, Datastore] | None = None) -> Response:
     try:
-        result, set_parameter_value = run_datastore(ds, data.get('params'), row_limit=_preview_limit(data))
-        return Response({'ok': True, 'data': result, 'set_parameter_value': set_parameter_value})
+        result = run_datastore(ds, data.get('params'), row_limit=_preview_limit(data), local_datastores=local_datastores)
+        return Response({'ok': True, 'data': result})
     except Exception as exc:  # noqa: BLE001 - surface any driver/query/HTTP error to the UI
         return Response({'ok': False, 'message': str(exc)})
 
@@ -55,8 +55,8 @@ class DatastoreViewSet(ModelViewSet):
         ds = self.get_object()
         if ds.refresh_mode == Datastore.REFRESH_SCHEDULED:
             return Response({'data': ds.last_result, 'last_run_at': ds.last_run_at})
-        result, set_parameter_value = run_datastore(ds, request.data)
-        return Response({'data': result, 'set_parameter_value': set_parameter_value})
+        result = run_datastore(ds, request.data)
+        return Response({'data': result})
 
     @action(detail=True, methods=['post'], url_path='clear-cache')
     def clear_cache(self, request, pk=None):
@@ -86,30 +86,22 @@ class DatastoreViewSet(ModelViewSet):
         datastore definition -- used by the manager's "New Datastore"
         dialog and the editor's local-datastore panel before either has
         been saved.
+
+        Optional `local_datastores`: {name: <same per-field shape as this
+        request's own top-level definition>} -- when previewing a panel-
+        local datastore whose own access_type=datastore names a *local*
+        sibling (source_datastore_scope='local'), that sibling has no saved
+        row to resolve against yet either, so the editor sends its
+        in-progress definition along too (see
+        services._resolve_source_datastore). Every caller that isn't
+        previewing a panel-local definition simply omits this.
         """
         data = request.data
-        ds = Datastore(
-            source_type=data.get('source_type') or Datastore.SOURCE_QUERY,
-            access_type=data.get('access_type') or '',
-            connection_id=data.get('connection') or None,
-            sql_def_id=data.get('sql_def') or None,
-            inline_sql=data.get('inline_sql') or '',
-            row_limit=data.get('row_limit') or None,
-            object_key=data.get('object_key') or '',
-            object_url=data.get('object_url') or '',
-            body=data.get('body') or '',
-            data_url=data.get('data_url') or '',
-            request_method=data.get('request_method') or Datastore.METHOD_GET,
-            request_params=data.get('request_params') or {},
-            request_body=data.get('request_body') or '',
-            file_path=data.get('file_path') or '',
-            file_expression=data.get('file_expression') or '',
-            renderer_type=data.get('renderer_type') or Datastore.RENDERER_NONE,
-            renderer_config=data.get('renderer_config') or {},
-            set_parameter_name=data.get('set_parameter_name') or '',
-            default_params=data.get('default_params') or {},
-        )
-        return _run_preview(ds, data)
+        ds = datastore_from_dict(data)
+        local_datastores = {
+            name: datastore_from_dict(d) for name, d in (data.get('local_datastores') or {}).items()
+        }
+        return _run_preview(ds, data, local_datastores=local_datastores or None)
 
     @action(detail=True, methods=['post'])
     def duplicate(self, request, pk=None):
@@ -139,9 +131,9 @@ class DatastoreViewSet(ModelViewSet):
             request_body=original.request_body,
             file_path=original.file_path,
             file_expression=original.file_expression,
+            source_datastore=original.source_datastore,
             renderer_type=original.renderer_type,
             renderer_config=original.renderer_config,
-            set_parameter_name=original.set_parameter_name,
             default_params=original.default_params,
             refresh_mode=original.refresh_mode,
             cron_schedule=original.cron_schedule,

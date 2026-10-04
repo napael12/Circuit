@@ -1,4 +1,4 @@
-import type { NodeType } from '../../api/types'
+import type { NodeType, PanelParameter } from '../../api/types'
 
 export type FieldType = 'text' | 'number' | 'select' | 'multiselect' | 'multiline' | 'csv' | 'json' | 'checkbox' | 'pagination'
 
@@ -7,12 +7,14 @@ export interface FieldSchema {
   label: string
   type: FieldType
   options?: string[]
-  /** For type=select with dynamic options (the panel's own datastore names), or type=multiselect (the panel's own drilldowns or links, by id -- specs/drilldown.md, specs/link.md). */
-  dynamicOptions?: 'datastores' | 'drilldowns' | 'links'
+  /** For type=select with dynamic options (the panel's own datastore names), or type=multiselect (the panel's own drilldowns, links, or parameters, by id/name -- specs/drilldown.md, specs/link.md, specs/parameters2.md). */
+  dynamicOptions?: 'datastores' | 'drilldowns' | 'links' | 'parameters'
   /** type=select only: label for the always-present "clear this field" option. Defaults to "None". */
   noneLabel?: string
   /** type=checkbox only: how the box renders when the field is unset on the record -- lets a field default to checked instead of the usual unchecked. */
   defaultChecked?: boolean
+  /** type=multiselect only: renders selected options as a reorderable list (up/down + remove) instead of a plain checkbox list, and the array's own order is the value -- see PropertyPanel.tsx's OrderedMultiselectField. */
+  orderable?: boolean
   help?: string
 }
 
@@ -83,6 +85,12 @@ const DATATABLE: FieldSchema[] = [
   { key: 'treeRows', label: 'Tree rows', type: 'checkbox' },
   { key: 'treeIdField', label: 'Row id field', type: 'text', help: 'treeRows only -- defaults to "id"' },
   { key: 'treeParentField', label: 'Parent id field', type: 'text', help: 'treeRows only -- defaults to "parentId"' },
+  {
+    key: 'colorScaleGroup',
+    label: 'Color Scale Group',
+    type: 'csv',
+    help: 'Field names (comma-separated) of this table\'s own columns whose Color scale should combine into one shared min/max range, instead of each column scaling against just its own values. A listed column still needs its own Color scale turned on to render colored',
+  },
   { key: 'drilldownIds', label: 'Drilldowns', type: 'multiselect', dynamicOptions: 'drilldowns', help: 'Adds each to this control\'s right-click menu' },
   { key: 'linkIds', label: 'Links', type: 'multiselect', dynamicOptions: 'links', help: 'Adds each to this control\'s right-click menu' },
 ]
@@ -100,7 +108,7 @@ const DATATABLE_COLUMN: FieldSchema[] = [
     type: 'select',
     options: ['sequential', 'diverging'],
     noneLabel: 'None',
-    help: 'Data type=number only -- persistently colors each cell by where its value falls in the column\'s range (low/mid/high). Diverging adds a midpoint color, for a column centered on zero/a target',
+    help: 'Persistently colors each cell by where its value falls in the column\'s range (low/mid/high), as long as its values parse as numbers -- not limited to Data type=number. Diverging adds a midpoint color, for a column centered on zero/a target. See the datatable\'s own Color Scale Group to combine several columns onto one shared range',
   },
   { key: 'colorScaleMin', label: 'Color scale min', type: 'number', help: 'Blank -- auto, from the lowest value currently loaded' },
   { key: 'colorScaleMax', label: 'Color scale max', type: 'number', help: 'Blank -- auto, from the highest value currently loaded' },
@@ -245,6 +253,14 @@ const PARAMETERS: FieldSchema[] = [
   WEIGHT,
   HIDE_TITLE,
   { ...DIRECTION, help: 'Arrangement of the parameter fields themselves. Unset behaves as vertical' },
+  {
+    key: 'parameterNames',
+    label: 'Parameters',
+    type: 'multiselect',
+    orderable: true,
+    dynamicOptions: 'parameters',
+    help: 'Which panel parameters this control shows, and in what order -- independent of the panel-wide Parameters list order. Blank -- every non-hidden panel parameter, in the panel\'s own order',
+  },
   { key: 'drilldownIds', label: 'Drilldowns', type: 'multiselect', dynamicOptions: 'drilldowns', help: 'Adds each to this control\'s right-click menu' },
   { key: 'linkIds', label: 'Links', type: 'multiselect', dynamicOptions: 'links', help: 'Adds each to this control\'s right-click menu' },
 ]
@@ -312,27 +328,80 @@ export function schemaFor(type: NodeType): FieldSchema[] {
   return SCHEMAS[type] ?? []
 }
 
-/** Field schema for a panel-level Parameter (specs/control_attributes.md's `parameter:`). */
+/** Field schema for a panel-level Parameter (specs/control_attributes.md's `parameter:`). Per-Parameter-type settings live in PARAMETER_TYPE_CONFIG_SCHEMAS instead, behind the editor's "Configure" button (specs/parameters3.md) -- not here. */
 export const PARAMETER_SCHEMA: FieldSchema[] = [
   { key: 'name', label: 'Name', type: 'text' },
   { key: 'label', label: 'Label', type: 'text' },
   { key: 'defaultValue', label: 'Default value', type: 'text' },
-  { key: 'dataType', label: 'Data type', type: 'select', options: ['str', 'number', 'date'] },
   { key: 'hidden', label: 'Hidden', type: 'checkbox', help: 'Still usable, but not shown in the Parameters dialog' },
+  {
+    key: 'inputType',
+    label: 'Parameter type',
+    type: 'select',
+    options: ['calendar', 'range', 'selector-single', 'selector-multi', 'toggle'],
+    noneLabel: 'Input box',
+    help: 'Picking a type unlocks its own "Configure" button below, for settings specific to that type (options datastore, range bounds, date format, ...)',
+  },
+  {
+    key: 'addToHeader',
+    label: 'Add to header',
+    type: 'checkbox',
+    help: "Also shows this parameter's own input directly in the dashboard viewer's header, in addition to the Parameters dialog",
+  },
+]
+
+/** specs/parameters3.md: one FieldSchema[] per PanelParameter.inputType, rendered by ParameterTypeConfigDialog.tsx's "Configure" button -- only the settings relevant to that one type, instead of every type's fields always sitting in PARAMETER_SCHEMA above. */
+const SELECTOR_DATASTORE_FIELDS: FieldSchema[] = [
   {
     key: 'datastore',
     label: 'Options datastore',
     type: 'select',
     dynamicOptions: 'datastores',
-    help: "Populates this parameter's picker from the datastore's rows -- a multi-column datastore renders as a lookup table instead of a plain dropdown",
+    help: "Populates this parameter's picker from the datastore's rows",
   },
   {
     key: 'selectorColumn',
     label: 'Selector column',
     type: 'text',
-    help: 'Options datastore only -- which column supplies the actual value. Blank uses the first column',
+    help: 'Which column supplies the actual value. Blank uses the first column',
   },
 ]
+export const PARAMETER_TYPE_CONFIG_SCHEMAS: Partial<Record<NonNullable<PanelParameter['inputType']>, FieldSchema[]>> = {
+  range: [
+    { key: 'rangeMin', label: 'Range min', type: 'number', help: 'Slider lower bound. Blank -- 0' },
+    { key: 'rangeMax', label: 'Range max', type: 'number', help: 'Slider upper bound. Blank -- 100' },
+    { key: 'rangeStep', label: 'Range step', type: 'number', help: 'Slider increment. Blank -- 1' },
+    { key: 'displayTicks', label: 'Display Ticks', type: 'checkbox', help: 'Shows a tick mark at each step along the slider (skipped above 50 ticks)' },
+  ],
+  toggle: [
+    {
+      key: 'toggleValues',
+      label: 'Toggle values',
+      type: 'text',
+      help: '"<on>|<off>", e.g. "yes|no" -- the two values actually stored/substituted. Blank -- "true|false"',
+    },
+  ],
+  'selector-single': SELECTOR_DATASTORE_FIELDS,
+  'selector-multi': [
+    ...SELECTOR_DATASTORE_FIELDS,
+    { key: 'selectorDelimiter', label: 'Delimiter', type: 'text', help: 'Joins/splits the selected values. Blank -- ","' },
+    {
+      key: 'selectorEnclosure',
+      label: 'Text enclosure',
+      type: 'text',
+      help: 'Wraps each selected value, e.g. \'AAPL\',\'MSFT\' -- so a value containing the delimiter still round-trips. Blank -- "\'". Deliberately clear for no enclosure at all',
+    },
+  ],
+  calendar: [
+    { key: 'calendarFormat', label: 'Date format', type: 'text', help: 'A date-fns format pattern. Blank -- "yyyy-MM-dd"' },
+    {
+      key: 'calendarDefaultExpr',
+      label: 'Default date expression',
+      type: 'text',
+      help: '"today", "today+5 day", "today-2 business day" -- resolved fresh each time the dashboard loads. Overrides Default value above when set; blank -- Default value is used as-is',
+    },
+  ],
+}
 
 /** Field schema for a panel-level Link (specs/link.md). */
 export const LINK_SCHEMA: FieldSchema[] = [

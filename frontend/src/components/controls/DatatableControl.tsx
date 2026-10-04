@@ -21,10 +21,12 @@ import {
   buildColumns,
   buildTransposedColumns,
   buildTreeRows,
+  colorScaleGroupKey,
   computeTotal,
   diffChangedCells,
   GROUP_ROW_KEY,
   groupRows,
+  isColorScaleEligibleDataType,
   toRows,
   transposeRows,
   type ColorScaleDomains,
@@ -141,30 +143,56 @@ export function DatatableControl({ component, datastores, previewMode }: Control
   // filter) -- undefined for a non-numeric value, so those never affect the
   // range. A column left with no numeric value loaded yet gets no entry
   // (colorScaleStyle then renders it uncolored rather than picking an
-  // arbitrary domain).
+  // arbitrary domain). Eligibility mirrors colorScaleStyle's own gate (see
+  // isColorScaleEligibleDataType in datatableUtils.tsx) -- a column doesn't
+  // need dataType='number' explicitly set, just a dataType that isn't
+  // date/datetime/badge.
+  //
+  // colorScaleGroup (datatable-level, not per-column): columns whose field
+  // is named in component.colorScaleGroup share one bucket key
+  // (colorScaleGroupKey -- a column not named there falls back to its own
+  // id, i.e. a "group" of just itself, unchanged from before grouping
+  // existed) and are bucketed together first; the min/max below is then
+  // computed once per bucket from the union of every member column's
+  // values, and stored under each member's own id -- colorScaleStyle's
+  // per-cell lookup by col.id needs no change at all.
   const colorScaleDomains = useMemo<ColorScaleDomains>(() => {
-    const domains: ColorScaleDomains = new Map()
+    const groups = new Map<string, PanelNode[]>()
     for (const col of visibleColumns) {
-      if (!col.colorScale || col.colorScale === 'none' || col.dataType !== 'number' || !col.field) continue
-      let min = col.colorScaleMin
-      let max = col.colorScaleMax
+      if (!col.colorScale || col.colorScale === 'none' || !isColorScaleEligibleDataType(col.dataType) || !col.field) continue
+      const key = colorScaleGroupKey(col, component.colorScaleGroup)
+      const members = groups.get(key)
+      if (members) members.push(col)
+      else groups.set(key, [col])
+    }
+    const domains: ColorScaleDomains = new Map()
+    for (const members of groups.values()) {
+      // First explicit override within the group wins for that end
+      // (conflicting overrides across members aren't reconciled further);
+      // either end left unset is auto-computed from the union below.
+      let min = members.find((c) => c.colorScaleMin !== undefined)?.colorScaleMin
+      let max = members.find((c) => c.colorScaleMax !== undefined)?.colorScaleMax
       if (min === undefined || max === undefined) {
         let computedMin = Infinity
         let computedMax = -Infinity
         for (const row of rows) {
-          const raw = getFieldValue(row, col.field)
-          const num = typeof raw === 'number' ? raw : parseFloat(String(raw))
-          if (!Number.isFinite(num)) continue
-          if (num < computedMin) computedMin = num
-          if (num > computedMax) computedMax = num
+          for (const col of members) {
+            const raw = getFieldValue(row, col.field!)
+            const num = typeof raw === 'number' ? raw : parseFloat(String(raw))
+            if (!Number.isFinite(num)) continue
+            if (num < computedMin) computedMin = num
+            if (num > computedMax) computedMax = num
+          }
         }
         if (min === undefined) min = computedMin
         if (max === undefined) max = computedMax
       }
-      if (Number.isFinite(min) && Number.isFinite(max)) domains.set(col.id, { min, max })
+      if (Number.isFinite(min) && Number.isFinite(max)) {
+        for (const col of members) domains.set(col.id, { min, max })
+      }
     }
     return domains
-  }, [visibleColumns, rows])
+  }, [visibleColumns, rows, component.colorScaleGroup])
 
   const columns = useMemo(() => {
     const onLinkedCellClick = (col: PanelNode, value: unknown) =>

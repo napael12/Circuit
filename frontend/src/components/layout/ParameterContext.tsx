@@ -3,8 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 
 import { createParameterStore, type ParameterStore } from '../../store/parameterStore'
 import type { PanelDatastoreRef, PanelNode, PanelParameter } from '../../api/types'
-import { visibleParameters } from '../../utils/panelParams'
-import { ParameterSourceDatastores } from './ParameterSourceDatastores'
+import { resolveParameterDefault, visibleParameters } from '../../utils/panelParams'
 import { ParametersDialog } from './ParametersDialog'
 
 const ParameterStoreContext = createContext<ParameterStore | null>(null)
@@ -25,25 +24,23 @@ export function ParameterProvider({
   datastores = [],
   content = [],
   panelId = '',
-  previewMode,
   children,
 }: {
   parameters: PanelParameter[]
-  /** Needed for a select-type Parameter field in the dialog (ParamField's dynamic option list), and for every datastore's own "Set Parameter" option (see ParameterSourceDatastores). */
+  /** Needed for a select-type Parameter field in the dialog (ParamField's dynamic option list). */
   datastores?: PanelDatastoreRef[]
   /** The dashboard's component tree, so the dialog can exclude parameters only settable via a hidden column's click-to-select (see utils/panelParams). */
   content?: PanelNode[]
   panelId?: string
-  /** Editor's Preview tab for an in-progress (possibly unsaved) panel -- threaded into ParameterSourceDatastores' own useDatastore calls, same as every control already gets. */
-  previewMode?: boolean
   children: ReactNode
 }) {
   const store = useMemo(
     () =>
       createParameterStore(
-        Object.fromEntries(parameters.map((p) => [p.name, p.defaultValue ?? ''])),
+        Object.fromEntries(parameters.map((p) => [p.name, resolveParameterDefault(p)])),
       ),
-    // Parameters are fixed for the lifetime of a mounted panel.
+    // Parameters are fixed for the lifetime of a mounted panel -- including
+    // "today" for a calendarDefaultExpr, resolved once at that moment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   )
@@ -59,7 +56,6 @@ export function ParameterProvider({
       <ParameterStoreContext.Provider value={store}>
         <ParametersDialogContext.Provider value={dialogContext}>
           {children}
-          <ParameterSourceDatastores datastores={datastores} previewMode={previewMode} />
           <ParametersDialog
             open={dialogOpen}
             onClose={() => setDialogOpen(false)}

@@ -227,7 +227,7 @@ export function isPanelContent(value: unknown): value is PanelContent {
 export function isPanelParameter(value: unknown): value is PanelParameter {
   if (!value || typeof value !== 'object') return false
   const p = value as Partial<PanelParameter>
-  return typeof p.name === 'string' && typeof p.label === 'string' && typeof p.dataType === 'string'
+  return typeof p.name === 'string' && typeof p.label === 'string'
 }
 
 /** Type guard for clipboard/pasted JSON -- see EditorPage.tsx's paste-datastore handler. */

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useTable, type ColumnDef } from '@tanstack/react-table'
-import { Copy, Download, Eraser, MoreHorizontal, Pencil, Play, Plus, Trash2, Upload } from 'lucide-react'
+import { ClipboardPaste, Copy, Download, Eraser, MoreHorizontal, Pencil, Play, Plus, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +19,13 @@ import { SelectorColumnFilter, TextColumnFilter } from '../reui/data-grid/data-g
 import { api } from '../../api/client'
 import type { DataConnection, Datastore, Role } from '../../api/types'
 import { downloadJson, readSingleItemJson } from '../../utils/importExport'
+import {
+  clipboardToGlobalPayload,
+  datastoreToClipboard,
+  readDatastoreClipboard,
+  type DatastoreClipboardEntry,
+} from '../../utils/datastoreClipboard'
+import { uniqueName } from '../editor/panelTree'
 import { useManagerGridInitialState, usePersistManagerGridState } from '../../hooks/useManagerGridState'
 import { CloneDialog } from './CloneDialog'
 import { DatastoreDialog } from './DatastoreDialog'
@@ -62,7 +69,12 @@ export function DatastoresPanel({ connections, roles }: Props) {
   const [rows, setRows] = useState<Datastore[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<EditingState | null>(null)
-  const [cloneTarget, setCloneTarget] = useState<Datastore | null>(null)
+  // A datastore copied to the clipboard (from here or the editor's own local
+  // datastores -- see utils/datastoreClipboard.ts), parsed and validated but
+  // not yet created -- pasteDatastore opens this instead of posting it
+  // straight away, so a colliding id is a deliberate choice, not a silent
+  // "-2" suffix (same pattern as EditorPage.tsx's own paste-datastore flow).
+  const [pasteDraft, setPasteDraft] = useState<DatastoreClipboardEntry | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(() => {
@@ -84,6 +96,30 @@ export function DatastoresPanel({ connections, roles }: Props) {
     } catch (err) {
       toast.error(String(err))
     }
+  }
+
+  const copyDatastore = async (ds: Datastore) => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(datastoreToClipboard(ds), null, 2))
+      toast.success('Copied.')
+    } catch {
+      toast.error('Clipboard access was denied.')
+    }
+  }
+
+  const pasteDatastore = async () => {
+    try {
+      setPasteDraft(await readDatastoreClipboard())
+    } catch (err) {
+      toast.error(String(err))
+    }
+  }
+
+  const confirmPasteDatastore = async (id: string) => {
+    if (!pasteDraft) return
+    await api.post('/datastores/', clipboardToGlobalPayload(pasteDraft, id))
+    toast.success('Pasted.')
+    load()
   }
 
   const handleImportFile = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -220,9 +256,9 @@ export function DatastoresPanel({ connections, roles }: Props) {
                   <Pencil />
                   Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setCloneTarget(row.original)}>
+                <DropdownMenuItem onClick={() => copyDatastore(row.original)}>
                   <Copy />
-                  Clone
+                  Copy
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -273,6 +309,10 @@ export function DatastoresPanel({ connections, roles }: Props) {
           <Upload />
           Import
         </Button>
+        <Button variant="outline" size="sm" onClick={pasteDatastore}>
+          <ClipboardPaste />
+          Paste
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setEditing({ datastore: null, tab: 'edit' })}>
           <Plus />
           New
@@ -286,6 +326,9 @@ export function DatastoresPanel({ connections, roles }: Props) {
           initialTab={editing.tab}
           connections={connections}
           roles={roles}
+          availableDatastoreRefs={rows
+            .filter((r) => r.id !== editing.datastore?.id)
+            .map((r) => ({ name: r.id, scope: 'global' as const }))}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null)
@@ -293,17 +336,14 @@ export function DatastoresPanel({ connections, roles }: Props) {
           }}
         />
       )}
-      {cloneTarget && (
+      {pasteDraft && (
         <CloneDialog
-          title="Clone datastore"
+          title="Paste datastore"
           label="Name"
-          suggestedName={`${cloneTarget.id}-copy`}
-          onClone={async (name) => {
-            await api.post(`/datastores/${cloneTarget.id}/duplicate/`, { name })
-            toast.success('Cloned.')
-            load()
-          }}
-          onClose={() => setCloneTarget(null)}
+          suggestedName={uniqueName(pasteDraft.name, rows.map((r) => r.id))}
+          submitLabel="Paste"
+          onClone={confirmPasteDatastore}
+          onClose={() => setPasteDraft(null)}
         />
       )}
     </div>

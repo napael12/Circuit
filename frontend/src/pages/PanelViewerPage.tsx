@@ -1,22 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Info, MoreHorizontal } from 'lucide-react'
+import { MoreHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { InfoPopover } from '@/components/InfoPopover'
 import { Spinner } from '@/components/ui/spinner'
 
 import { api } from '../api/client'
-import type { Panel, PanelParameter } from '../api/types'
+import type { Panel, PanelDatastoreRef, PanelParameter } from '../api/types'
 import { DrilldownProvider } from '../components/layout/DrilldownContext'
 import { LinkProvider } from '../components/layout/LinkContext'
-import { ParameterProvider, useAllParameterValues, useOpenParametersDialog } from '../components/layout/ParameterContext'
+import { ParameterProvider, useAllParameterValues, useOpenParametersDialog, useSetParameter } from '../components/layout/ParameterContext'
+import { ParamField } from '../components/layout/ParametersDialog'
 import { PanelLayout } from '../components/layout/PanelLayout'
 import { StatusBar } from '../components/layout/StatusBar'
 import { PanelUsageDialog } from '../components/manager/PanelUsageDialog'
 import { openInNewWindow } from '../utils/newWindow'
-import { visibleParameters } from '../utils/panelParams'
+import { headerParameters, visibleParameters } from '../utils/panelParams'
 import { substituteParams } from '../utils/panelTemplating'
 import { useBrandingStore } from '../store/branding'
 import { useSessionStore } from '../store/session'
@@ -69,9 +71,23 @@ export function PanelViewerPage() {
     </div>
   )
 
+  // specs/parameters2.md #1: parameters marked addToHeader render their own
+  // input directly in ViewerToolbar, in addition to the Parameters dialog/
+  // status bar summary below -- same node list already assembled for those.
+  const headerParams = useMemo(
+    () =>
+      panel
+        ? headerParameters(panel.content.parameters ?? [], [
+            ...panel.content.content,
+            ...(panel.content.drilldowns ?? []).map((d) => d.root),
+          ])
+        : [],
+    [panel],
+  )
+
   const content = (
     <div className="flex min-w-0 flex-1 flex-col">
-      <ViewerToolbar panel={panel} onReload={load} />
+      <ViewerToolbar panel={panel} onReload={load} headerParams={headerParams} datastores={panel?.content.datastores ?? []} />
       {body}
       <StatusBar>
         {panel ? (
@@ -110,7 +126,17 @@ export function PanelViewerPage() {
   )
 }
 
-function ViewerToolbar({ panel, onReload }: { panel: Panel | null; onReload?: () => void }) {
+function ViewerToolbar({
+  panel,
+  onReload,
+  headerParams,
+  datastores,
+}: {
+  panel: Panel | null
+  onReload?: () => void
+  headerParams: PanelParameter[]
+  datastores: PanelDatastoreRef[]
+}) {
   const isAdmin = useSessionStore((s) => s.session?.is_admin)
   const navigate = useNavigate()
   const [usageOpen, setUsageOpen] = useState(false)
@@ -132,15 +158,12 @@ function ViewerToolbar({ panel, onReload }: { panel: Panel | null; onReload?: ()
       <div className="flex flex-col justify-center">
         <div className="flex items-center gap-1.5 text-[1.25em] font-bold">
           {panel ? <PanelTitle panel={panel} /> : <BrandName />}
-          {panel?.description && (
-            <span title={panel.description} className="text-muted-foreground">
-              <Info className="size-4" />
-            </span>
-          )}
+          {panel?.description && <InfoPopover iconClassName="size-4">{panel.description}</InfoPopover>}
         </div>
         {subtitle && <div className="text-[0.72em] text-muted-foreground">{subtitle}</div>}
       </div>
       <div className="flex-1" />
+      {panel && headerParams.length > 0 && <HeaderParameters parameters={headerParams} datastores={datastores} />}
       {onReload && (
         <Button variant="outline" size="sm" onClick={onReload}>
           Reload
@@ -193,6 +216,24 @@ function ParametersButton() {
     <Button variant="outline" size="sm" onClick={show}>
       Parameters
     </Button>
+  )
+}
+
+/** specs/parameters2.md #1 -- renders each addToHeader parameter's own ParamField right in the toolbar, applying immediately on change (same as ParametersControl -- no draft+Apply step like the dialog). */
+function HeaderParameters({ parameters, datastores }: { parameters: PanelParameter[]; datastores: PanelDatastoreRef[] }) {
+  const values = useAllParameterValues()
+  const setParameter = useSetParameter()
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      {parameters.map((param) => (
+        <div key={param.name} className="flex items-center gap-1.5">
+          <label className="shrink-0 text-[0.75em] text-muted-foreground">{param.label}</label>
+          <div className="w-36">
+            <ParamField param={param} datastores={datastores} value={values[param.name] ?? ''} onChange={(v) => setParameter(param.name, v)} />
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 

@@ -20,7 +20,7 @@ interface Props {
  * Raw-JSON editor for a single parameter -- same pattern as
  * EditComponentJsonDialog, scoped to one parameter instead of a tree node.
  * `name` must stay unchanged (content nodes and datastores reference this
- * parameter by it); anything else -- label, dataType, defaultValue, etc. --
+ * parameter by it); anything else -- label, defaultValue, inputType, etc. --
  * can be edited freely.
  *
  * Applying only replaces this parameter in the in-editor state, same as any
@@ -59,7 +59,7 @@ export function EditParameterJsonDialog({ parameter, onApply, onClose }: Props) 
       return
     }
     if (!isPanelParameter(parsed)) {
-      setError('Doesn\'t look like a parameter -- expected "name", "label", and "dataType".')
+      setError('Doesn\'t look like a parameter -- expected "name" and "label".')
       return
     }
     if (parsed.name !== parameter.name) {

@@ -11,8 +11,6 @@ export interface DatastorePreviewResult {
   ok: boolean
   data?: unknown
   message?: string
-  /** Set Parameter's computed value (see Datastore.set_parameter_name) -- null/absent when that's unset. */
-  set_parameter_value?: string | null
 }
 
 export interface DataConnection {
@@ -96,11 +94,12 @@ export interface Datastore {
    */
   source_type: 'query' | 'serialized'
   /** source_type=serialized only: where its raw content is fetched from. */
-  access_type: 'http' | 's3' | 'file' | ''
+  access_type: 'http' | 's3' | 'file' | 'datastore' | 'embedded' | ''
   /**
    * source_type=query: a type=sql connection. source_type=serialized: a
    * type=http connection (access_type=http, optional) or a type=s3
-   * connection (access_type=s3, required); unused for access_type=file.
+   * connection (access_type=s3, required); unused for access_type=file/
+   * datastore/embedded.
    */
   connection: string | null
   sql_def: string | null
@@ -134,28 +133,25 @@ export interface Datastore {
   file_path: string
   /** source_type=serialized + access_type=file only: filename and/or regex selecting one file within file_path. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included). */
   file_expression: string
-  /** How raw content is turned into rows/columns -- see datastore/renderers.py. source_type=serialized only offers json/xml/delimited. */
+  /**
+   * source_type=serialized + access_type=datastore only: the id of another
+   * *global* datastore whose own full output becomes this one's raw content
+   * -- source_type=query there is its rows as JSON, source_type=serialized
+   * is its own raw content (chains through, if that one is also
+   * access_type=datastore). Always a global id -- a saved/shared datastore
+   * has no panel to resolve a "local" name against (see
+   * PanelDatastoreRef.source_datastore_scope for the panel-local version of
+   * this). Supports ${param}.
+   */
+  source_datastore: string
+  /** How raw content is turned into rows/columns -- see datastore/renderers.py. source_type=serialized offers none ("No Processing")/json/xml/delimited. */
   renderer_type: RendererType
   /**
-   * renderer_type=json/xml: {root_path?, columns: RendererColumn[]}; json also takes orient? ('records' default | 'index' | 'columns' | 'split' | 'values', as pandas to_json) and index_name? (default 'index').
+   * renderer_type=json/xml: {root_path?, columns: RendererColumn[]}.
    * renderer_type=delimited: {delimiter, has_header, quote_char?, columns?: string[]}.
    * renderer_type=fixed_width: {fields: RendererField[]}.
    */
   renderer_config: Record<string, unknown>
-  /**
-   * "Set Parameter": whenever this datastore's data loads -- for any control
-   * bound to it, or headlessly with no control at all (see
-   * ParameterSourceDatastores.tsx) -- the *entire* fetch is written into the
-   * named panel parameter, serialized to one string: source_type=query ->
-   * the rows, JSON-encoded; source_type=serialized -> the raw fetched
-   * content exactly as retrieved (its own native json/xml/delimited text),
-   * not the rendered rows. Blank = disabled. Applies regardless of scope.
-   * The actual computed value rides along on the datastore's own data/
-   * preview response as `set_parameter_value` (see DatastorePreviewResult
-   * and useDatastore's UseDatastoreResult) -- this field only names the
-   * target parameter.
-   */
-  set_parameter_name: string
   default_params: Record<string, unknown>
   /** specs/api_datastore.md: public API access via the pull/push endpoints. 'push' is only valid for source_type='serialized' using the JSON renderer. */
   api_mode: 'none' | 'pull' | 'push'
@@ -340,23 +336,64 @@ export interface ApiKeyUsageRow {
 export interface PanelParameter {
   name: string
   label: string
+  /** A calendar parameter with a non-blank calendarDefaultExpr ignores this in favor of that resolved/formatted expression -- see resolveParameterDefault in utils/panelParams.ts. */
   defaultValue?: string
   /** Runtime value -- not persisted, present only on values returned to a running preview/session. */
   value?: string
-  dataType: 'str' | 'number' | 'date'
   /** Participates in substitution/datastore params but is hidden from the Parameters dialog and status bar. */
   hidden?: boolean
-  /** Datastore name (see PanelContent.datastores) that supplies this parameter's select options, if any. */
+  /**
+   * selector-single/selector-multi only (see `inputType`) -- datastore name
+   * (PanelContent.datastores) that supplies this parameter's options.
+   * Still also honored, for backward compatibility, by a parameter with no
+   * `inputType` at all set but `datastore` set -- the pre-parameters2.md
+   * behavior a couple of already-saved dashboards still rely on.
+   */
   datastore?: string
   /**
    * datastore only -- which of the datastore's columns supplies the actual
-   * option value. Unset falls back to the first column (the pre-existing
-   * behavior). When the datastore's rows have more than one column, the
-   * picker renders as a lookup table (every column shown, for context)
-   * instead of a plain dropdown -- selectorColumn is still what a row click
-   * actually sets the parameter to.
+   * option value. Unset falls back to the first column. In the no-inputType
+   * legacy fallback above, a multi-column datastore renders as a lookup
+   * table (every column shown, for context) instead of a plain dropdown --
+   * selectorColumn is still what a row click actually sets the parameter to.
    */
   selectorColumn?: string
+  /** Also renders this parameter's own ParamField directly in the dashboard viewer's header toolbar (see PanelViewerPage.tsx), in addition to the Parameters dialog/parameters control. Applies immediately on change, same as the parameters control -- no separate "close"/Apply step. */
+  addToHeader?: boolean
+  /**
+   * Which widget ParamField renders -- see ParametersDialog.tsx. Unset (no
+   * specific Parameter type picked) is always a plain text Input, or --
+   * backward compatibility only, see `datastore` above -- a native
+   * select/lookup table when `datastore` happens to be set anyway.
+   * 'selector-single'/'selector-multi' require `datastore` to supply
+   * options -- without one they too fall back to the plain text Input.
+   * 'range' and 'selector-multi' both flatten to one string
+   * ("<from>,<to>" / delimiter-joined, optionally enclosure-wrapped) since
+   * `value`/`defaultValue` stay a single string regardless of inputType.
+   */
+  inputType?: 'calendar' | 'range' | 'selector-single' | 'selector-multi' | 'toggle'
+  /** inputType='range' only -- the Slider's fixed bounds/step. Unset -- 0/100/1. */
+  rangeMin?: number
+  rangeMax?: number
+  rangeStep?: number
+  /** inputType='range' only -- shows a tick mark at every step along the slider. Skipped (no ticks drawn) when that'd be more than 50 marks. */
+  displayTicks?: boolean
+  /** inputType='toggle' only -- "<on>|<off>", e.g. "yes|no". Blank/unset -- "true|false". */
+  toggleValues?: string
+  /** inputType='selector-multi' only -- joins/splits the selected values. Blank/unset -- ",". */
+  selectorDelimiter?: string
+  /** inputType='selector-multi' only -- wraps each selected value (e.g. 'AAPL','MSFT'), so a value containing the delimiter still round-trips. Unset -- "'". Explicitly cleared to "" -- no enclosure at all (distinct from unset; see selector-multi's encode/decode in ParametersDialog.tsx). */
+  selectorEnclosure?: string
+  /** inputType='calendar' only -- a date-fns format pattern. Blank/unset -- "yyyy-MM-dd". */
+  calendarFormat?: string
+  /**
+   * inputType='calendar' only -- a relative-date expression resolved once
+   * when the dashboard loads, in place of a frozen literal `defaultValue`:
+   * "today", "today+N day", "today-N business day" (N an integer; business
+   * day arithmetic skips Sat/Sun). Invalid/unparseable text is ignored
+   * (falls back to `defaultValue`). See resolveDateExpr in utils/panelParams.ts.
+   */
+  calendarDefaultExpr?: string
 }
 
 /**
@@ -375,7 +412,7 @@ export interface PanelDatastoreRef {
   scope: 'global' | 'local'
   // --- scope=local only, same shape as datastore.models.Datastore ---
   source_type?: 'query' | 'serialized'
-  access_type?: 'http' | 's3' | 'file' | ''
+  access_type?: 'http' | 's3' | 'file' | 'datastore' | 'embedded' | ''
   connection?: string
   inline_sql?: string
   row_limit?: number
@@ -388,9 +425,12 @@ export interface PanelDatastoreRef {
   request_body?: string
   file_path?: string
   file_expression?: string
+  /** access_type=datastore only: the referenced datastore's `name` (not `id`) -- resolved against this same panel's own content.datastores by name, matching how every other datastore reference already works. */
+  source_datastore?: string
+  /** access_type=datastore only: which list `source_datastore` was picked from -- 'local' can only ever mean another entry in this same panel's own content.datastores (a saved/global Datastore has no equivalent, see Datastore.source_datastore's own doc comment). */
+  source_datastore_scope?: 'global' | 'local'
   renderer_type?: RendererType
   renderer_config?: Record<string, unknown>
-  set_parameter_name?: string
   default_params?: Record<string, string>
 }
 
@@ -428,6 +468,8 @@ export interface PanelNode {
   weight?: number // flex weight among siblings; a fixed-size multiplier instead when `scrollable` is on -- see below
   /** layout: row vs column for its children. parameters: same idea, for its own field list -- see ParametersControl.tsx. Undefined/unset behaves as 'horizontal' for layout, 'vertical' for parameters (each control's own natural default). */
   direction?: 'horizontal' | 'vertical'
+  /** parameters only -- which of the panel's own parameters this control instance shows, and in what order (independent of the panel-wide parameters[] order). A name no longer valid (deleted/now-hidden) is silently skipped. Unset/empty -- every non-hidden panel parameter, in the panel's own order (the pre-existing behavior). */
+  parameterNames?: string[]
   resizable?: boolean
   /** Each direct child gets a collapse/expand toggle, shrinking it to a thin strip when collapsed. */
   collapsible?: boolean
@@ -485,6 +527,8 @@ export interface PanelNode {
   treeRows?: boolean
   treeIdField?: string
   treeParentField?: string
+  /** datatable only -- field names (of this table's own columns) whose colorScale combine into one shared min/max range instead of each column scaling against just its own values -- e.g. several numeric columns meant to read on one comparable scale. A column not named here keeps scaling independently (the default); a named column still needs its own colorScale turned on to actually render colored. */
+  colorScaleGroup?: string[]
   chartType?: 'line' | 'bar' | 'pie'
   // --- pivot ---
   /** Extra "Grand Total" column per value pivot-column: each row's aggregate across every column-group. */
@@ -503,12 +547,18 @@ export interface PanelNode {
   /** dataType=number only -- abbreviates per thousand/million/billion (1234 -> "1.2k", 2500000000 -> "2.5b"), overriding dataFormat's pattern. */
   humanReadable?: boolean
   /**
-   * datatable-column, dataType=number only -- persistently colors each
-   * cell's background by where its value falls in the column's range
-   * (Excel-style conditional formatting; distinct from signalOnUpdate's
-   * transient flash on a value *changing*). 'sequential' interpolates a
-   * fixed low->high color pair; 'diverging' adds a midpoint color, useful
-   * for a column centered on zero/a target. Unset/'none' -- no coloring.
+   * datatable-column only -- persistently colors each cell's background by
+   * where its value falls in the column's range (Excel-style conditional
+   * formatting; distinct from signalOnUpdate's transient flash on a value
+   * *changing*). Works on any column whose values parse as numbers,
+   * regardless of dataType (a loosely-typed datastore often leaves dataType
+   * at the 'str' default even for numeric fields) -- except
+   * dataType=date/datetime (a date string like "2024-01-15" would parse to
+   * a meaningless 2024) or badge (categorical, not a range), which are
+   * never colorable. 'sequential' interpolates a fixed low->high color
+   * pair; 'diverging' adds a midpoint color, useful for a column centered
+   * on zero/a target. Unset/'none' -- no coloring. See the datatable node's
+   * own `colorScaleGroup` to combine several columns onto one shared range.
    */
   colorScale?: 'none' | 'sequential' | 'diverging'
   /** colorScale only -- fixes the low/high end of the range instead of auto-computing it from the currently loaded rows. Either may be left unset to auto-compute just that end. */

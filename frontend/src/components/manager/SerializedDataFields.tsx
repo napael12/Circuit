@@ -20,9 +20,17 @@ const ACCESS_TYPE_OPTIONS: { value: NonNullable<Datastore['access_type']>; label
   { value: 'http', label: 'HTTP request' },
   { value: 's3', label: 'S3 bucket' },
   { value: 'file', label: 'File' },
+  { value: 'datastore', label: 'Datastore' },
+  { value: 'embedded', label: 'Embedded Data' },
 ]
 
-const SERIALIZED_RENDERER_TYPES: RendererType[] = ['json', 'xml', 'delimited']
+const SERIALIZED_RENDERER_TYPES: RendererType[] = ['none', 'json', 'xml', 'delimited']
+
+/** Accessing Data = 'datastore' -- another datastore (global or, within a panel, local) whose own full output becomes this one's raw content. */
+export interface DatastoreRefOption {
+  name: string
+  scope: 'global' | 'local'
+}
 
 const h = 'h-8 text-[0.85em]'
 
@@ -55,14 +63,24 @@ interface Props {
   onBodyChange: (v: string) => void
   bodyOpen: boolean
   onBodyOpenChange: (v: boolean) => void
+  /** accessType='datastore' only: the referenced datastore's name. */
+  sourceDatastore: string
+  onSourceDatastoreChange: (v: string) => void
+  /** accessType='datastore' only: which list `sourceDatastore` was picked from. Always 'global' when this dialog itself has scope='global' (see DatastoreDialog.tsx). */
+  sourceDatastoreScope: 'global' | 'local'
+  onSourceDatastoreScopeChange: (v: 'global' | 'local') => void
+  /** accessType='datastore' picker's options -- every other datastore this one could reference (self already excluded by the caller). */
+  availableDatastoreRefs: DatastoreRefOption[]
 }
 
 /**
- * source_type='serialized' (specs/serialized-datastore.md): fetches raw
- * content over HTTP/S3/File, then parses it with the shared Renderer
- * interface (JSON/XML/Delimited only -- no "None"/Fixed width, per the
- * spec's own "Processing Data" list). Split into "Accessing Data"/
- * "Processing Data" tabs as the spec explicitly asks for.
+ * source_type='serialized' (specs/serialized-datastore.md, specs/datastore2.md):
+ * fetches raw content over HTTP/S3/File/another Datastore/its own stored
+ * Body, then parses it with the shared Renderer interface (No Processing/
+ * JSON/XML/Delimited -- no Fixed width, per the spec's own "Processing
+ * Data" list). "No Processing" is how a datastore exists purely to feed
+ * another one via the "Datastore" access type below. Split into "Accessing
+ * Data"/"Processing Data" tabs as the spec explicitly asks for.
  */
 export function SerializedDataFields(props: Props) {
   const {
@@ -71,6 +89,7 @@ export function SerializedDataFields(props: Props) {
     requestBody, onRequestBodyChange, objectKey, onObjectKeyChange, objectUrl, onObjectUrlChange,
     filePath, onFilePathChange, fileExpression, onFileExpressionChange,
     rendererType, rendererConfig, onRendererChange, body, onBodyChange, bodyOpen, onBodyOpenChange,
+    sourceDatastore, onSourceDatastoreChange, sourceDatastoreScope, onSourceDatastoreScopeChange, availableDatastoreRefs,
   } = props
 
   const paramRows = Object.entries(requestParams)
@@ -227,6 +246,37 @@ export function SerializedDataFields(props: Props) {
             </Field>
           </>
         )}
+
+        {accessType === 'datastore' && (
+          <Field label="Source datastore" helperText="Another datastore whose own full output becomes this one's raw content -- SQL sources convert to JSON, serialized sources pass their raw content through as-is.">
+            <Select
+              value={sourceDatastore ? `${sourceDatastoreScope}:${sourceDatastore}` : ''}
+              onValueChange={(v) => {
+                const i = v.indexOf(':')
+                onSourceDatastoreScopeChange(v.slice(0, i) as 'global' | 'local')
+                onSourceDatastoreChange(v.slice(i + 1))
+              }}
+            >
+              <SelectTrigger className={cn(h, 'w-full')}>
+                <SelectValue placeholder="none" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableDatastoreRefs.map((opt) => (
+                  <SelectItem key={`${opt.scope}:${opt.name}`} value={`${opt.scope}:${opt.name}`}>
+                    {opt.name}
+                    {opt.scope === 'local' ? ' (local)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        )}
+
+        {accessType === 'embedded' && (
+          <Field label="Content" helperText="This datastore's actual source content. Supports ${param}">
+            <Textarea rows={6} value={body} onChange={(e) => onBodyChange(e.target.value)} className="font-mono text-[0.85em]" />
+          </Field>
+        )}
       </TabsContent>
 
       <TabsContent value="process" className="flex flex-col gap-3">
@@ -236,18 +286,22 @@ export function SerializedDataFields(props: Props) {
           onChange={onRendererChange}
           allowedTypes={SERIALIZED_RENDERER_TYPES}
         />
-        <button
-          type="button"
-          onClick={() => onBodyOpenChange(!bodyOpen)}
-          className="flex items-center gap-1 self-start text-[0.8em] text-muted-foreground hover:text-foreground"
-        >
-          <ChevronRight className={cn('size-3.5 transition-transform', bodyOpen && 'rotate-90')} />
-          Body (test / troubleshooting override)
-        </button>
-        {bodyOpen && (
-          <Field helperText="When set, this content is parsed directly instead of fetching from the configured access type. Supports ${param}">
-            <Textarea rows={6} value={body} onChange={(e) => onBodyChange(e.target.value)} className="font-mono text-[0.85em]" />
-          </Field>
+        {accessType !== 'embedded' && (
+          <>
+            <button
+              type="button"
+              onClick={() => onBodyOpenChange(!bodyOpen)}
+              className="flex items-center gap-1 self-start text-[0.8em] text-muted-foreground hover:text-foreground"
+            >
+              <ChevronRight className={cn('size-3.5 transition-transform', bodyOpen && 'rotate-90')} />
+              Body (test / troubleshooting override)
+            </button>
+            {bodyOpen && (
+              <Field helperText="When set, this content is parsed directly instead of fetching from the configured access type. Supports ${param}">
+                <Textarea rows={6} value={body} onChange={(e) => onBodyChange(e.target.value)} className="font-mono text-[0.85em]" />
+              </Field>
+            )}
+          </>
         )}
       </TabsContent>
     </Tabs>

@@ -47,10 +47,19 @@ class Datastore(models.Model):
     ACCESS_HTTP = 'http'
     ACCESS_S3 = 's3'
     ACCESS_FILE = 'file'
+    # Another datastore's own full output, via source_datastore below --
+    # see services.get_datastore_raw_output/_fetch_serialized_raw.
+    ACCESS_DATASTORE = 'datastore'
+    # The stored `body` field itself, used as the content directly (not as
+    # the test/troubleshooting override every other access type also gets
+    # from a non-blank `body` -- see _fetch_serialized_raw).
+    ACCESS_EMBEDDED = 'embedded'
     ACCESS_CHOICES = [
         (ACCESS_HTTP, 'HTTP request'),
         (ACCESS_S3, 'S3 bucket'),
         (ACCESS_FILE, 'File'),
+        (ACCESS_DATASTORE, 'Datastore'),
+        (ACCESS_EMBEDDED, 'Embedded Data'),
     ]
 
     METHOD_GET = 'GET'
@@ -66,7 +75,7 @@ class Datastore(models.Model):
     RENDERER_DELIMITED = 'delimited'
     RENDERER_FIXED_WIDTH = 'fixed_width'
     RENDERER_CHOICES = [
-        (RENDERER_NONE, 'None (raw JSON response)'),
+        (RENDERER_NONE, 'No Processing'),
         (RENDERER_JSON, 'JSON (JsonPath columns)'),
         (RENDERER_XML, 'XML (XPath columns)'),
         (RENDERER_DELIMITED, 'Delimited text'),
@@ -99,7 +108,7 @@ class Datastore(models.Model):
     id = models.SlugField(primary_key=True, max_length=30)
     source_type = models.CharField(max_length=10, choices=SOURCE_CHOICES)
     # source_type=serialized only: where its raw content is fetched from.
-    access_type = models.CharField(max_length=6, choices=ACCESS_CHOICES, blank=True)
+    access_type = models.CharField(max_length=9, choices=ACCESS_CHOICES, blank=True)
 
     # source_type=query: a type=sql connection. source_type=serialized: a
     # type=http connection (access_type=http, optional -- unset means no
@@ -158,28 +167,27 @@ class Datastore(models.Model):
     file_path = models.CharField(max_length=500, blank=True)
     file_expression = models.CharField(max_length=255, blank=True)
 
+    # source_type=serialized + access_type=datastore only: the id of another
+    # *global* Datastore row whose own full output (see
+    # services.get_datastore_raw_output) becomes this one's raw content --
+    # always resolved against the shared Datastore table, since a saved/
+    # global row has no panel to resolve a "local" name against (a panel-
+    # embedded datastore can reference a local sibling too, but that's a
+    # PanelDatastoreRef-only concept -- see api/types.ts on the frontend and
+    # panels.views.local_datastore's own resolution on the backend).
+    # Supports ${param} substitution.
+    source_datastore = models.CharField(max_length=30, blank=True)
+
     # Renderer interface (specs/datasource_enhancements.md): how raw content
     # from source_type=serialized is turned into rows/columns -- see
     # datastore.renderers. Unused for source_type=query (SQL already
-    # produces rows/columns natively). source_type=serialized only offers
-    # json/xml/delimited (specs/serialized-datastore.md's own "Processing
-    # Data" list) -- enforced in the UI, not here.
+    # produces rows/columns natively). source_type=serialized offers
+    # none/json/xml/delimited (specs/serialized-datastore.md's own
+    # "Processing Data" list, plus "No Processing" -- a datastore that exists
+    # purely to feed another one via access_type=datastore) -- enforced in
+    # the UI, not here.
     renderer_type = models.CharField(max_length=15, choices=RENDERER_CHOICES, default=RENDERER_NONE, blank=True)
     renderer_config = models.JSONField(default=dict, blank=True)
-
-    # "Set Parameter": whenever this datastore's data is (re)fetched -- by any
-    # control bound to it, or headlessly with no control at all, see frontend
-    # ParameterSourceDatastores.tsx -- the *entire* fetch is written into the
-    # panel parameter named here, serialized into one string (see
-    # services._run_uncached's set_parameter_value): source_type=query -> the
-    # rows, JSON-encoded; source_type=serialized -> the raw fetched content
-    # exactly as retrieved (its own native json/xml/delimited text), not the
-    # rendered rows. Blank (the default) = disabled. The actual write to the
-    # parameter store only ever happens client-side (parameters are
-    # browser-side state, not server state) -- this field just names the
-    # target; run_datastore() computes the value but never writes it anywhere
-    # itself.
-    set_parameter_name = models.CharField(max_length=100, blank=True)
 
     # name -> default value, for any ${param} referenced across this
     # datastore's own metadata (SQL text, object_key, data_url, renderer_config, etc).
@@ -248,7 +256,7 @@ class Datastore(models.Model):
 
         texts = [
             self.sql_text(), self.object_key, self.object_url, self.body, self.data_url,
-            self.request_body, self.file_path, self.file_expression,
+            self.request_body, self.file_path, self.file_expression, self.source_datastore,
         ]
         texts += list(strings_in(self.request_params))
         texts += list(strings_in(self.renderer_config))

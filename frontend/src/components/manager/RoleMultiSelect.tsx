@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Field } from '@/components/Field'
+import { cn } from '@/lib/utils'
 
 import type { Role } from '../../api/types'
 
@@ -15,6 +16,8 @@ interface Props {
   label?: string
   /** Renders behind a disclosure toggle instead of always-open -- collapsed by default unless roles are already assigned. */
   collapsible?: boolean
+  /** Height class for the scrollable role list -- defaults to a compact `h-32` (fine alongside other fields); a caller with more room to spare (e.g. a tab of its own) can pass something taller. */
+  listClassName?: string
 }
 
 function summarize(value: number[]): string {
@@ -35,13 +38,14 @@ export function RoleMultiSelect({
   helperText,
   label = 'Access roles',
   collapsible,
+  listClassName = 'h-32',
 }: Props) {
   const defaultHelperText = 'Leave empty to allow everyone. Otherwise, viewers need at least one of the selected roles.'
 
   const list = (
-    // Fixed to ~4 rows regardless of how many roles exist, rather than
+    // Fixed height regardless of how many roles exist, rather than
     // shrinking to fit -- scrolls internally past that (h-, not max-h-).
-    <div className="flex h-32 flex-col gap-1 overflow-y-auto rounded-lg border border-input p-2">
+    <div className={cn('flex flex-col gap-1 overflow-y-auto rounded-lg border border-input p-2', listClassName)}>
       {roles.length === 0 && <span className="text-[0.8em] text-muted-foreground">No roles defined yet.</span>}
       {roles.map((role) => (
         <label key={role.id} className="flex items-center gap-2 text-[0.85em]">

@@ -45,6 +45,7 @@ import { DatastoreRefDialog } from '../components/editor/DatastoreRefDialog'
 import { DesignModeLayout } from '../components/editor/DesignModeLayout'
 import { EditComponentJsonDialog } from '../components/editor/EditComponentJsonDialog'
 import { EditParameterJsonDialog } from '../components/editor/EditParameterJsonDialog'
+import { ParameterTypeConfigDialog } from '../components/editor/ParameterTypeConfigDialog'
 import { buildColumnsFromSample } from '../components/editor/loadColumns'
 import { LoadColumnsDialog } from '../components/editor/LoadColumnsDialog'
 import { LoadColumnsFromJsonDialog } from '../components/editor/LoadColumnsFromJsonDialog'
@@ -65,7 +66,6 @@ import {
   findParent,
   findRootContaining,
   insertAfter,
-  isPanelDatastoreRef,
   isPanelLink,
   isPanelNode,
   isPanelParameter,
@@ -83,6 +83,13 @@ import { PropertyPanel } from '../components/editor/PropertyPanel'
 import { LINK_SCHEMA, PARAMETER_SCHEMA, schemaFor, type FieldSchema } from '../components/editor/propertySchemas'
 import { ViewSourceDialog } from '../components/editor/ViewSourceDialog'
 import { useResizable } from '../hooks/useResizable'
+import {
+  clipboardToLocalRef,
+  localRefToClipboard,
+  readDatastoreClipboard,
+  type DatastoreClipboardEntry,
+} from '../utils/datastoreClipboard'
+import { localDatastoresPayload } from '../utils/localDatastores'
 import { openInNewWindow } from '../utils/newWindow'
 import { discoverAllParams } from '../utils/sqlParams'
 
@@ -174,9 +181,12 @@ export function EditorPage() {
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [openDialogOpen, setOpenDialogOpen] = useState(false)
   const [datastoreDialog, setDatastoreDialog] = useState<{ initial: PanelDatastoreRef | null } | null>(null)
-  // A local datastore copied to the clipboard, parsed and validated but not yet added -- pasteDatastore opens this
-  // instead of adding it directly, so the name can be chosen before it lands in the list (see CloneDialog below).
-  const [pasteDatastoreDraft, setPasteDatastoreDraft] = useState<PanelDatastoreRef | null>(null)
+  // A datastore copied to the clipboard -- from this same tree (local or
+  // global-scope) or from the Manager's own global datastore list (see
+  // utils/datastoreClipboard.ts) -- parsed and validated but not yet added.
+  // pasteDatastore opens this instead of adding it directly, so the name can
+  // be chosen before it lands in the list (see CloneDialog below).
+  const [pasteDatastoreDraft, setPasteDatastoreDraft] = useState<DatastoreClipboardEntry | null>(null)
   const [previewDatastore, setPreviewDatastore] = useState<{ ref: PanelDatastoreRef; initialParams: Record<string, string> } | null>(null)
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null)
   const savedSnapshot = useRef(
@@ -198,6 +208,10 @@ export function EditorPage() {
     [content.drilldowns],
   )
   const linkOptions = useMemo(() => (content.links ?? []).map((l: PanelLink) => ({ id: l.id, name: l.name })), [content.links])
+  const parameterOptions = useMemo(
+    () => content.parameters.map((p) => ({ id: p.name, name: p.label || p.name })),
+    [content.parameters],
+  )
 
   // Runs on every navigation between dashboards (New, Open, or a direct URL
   // change) -- EditorPage stays mounted across those since the route has no
@@ -355,7 +369,7 @@ export function EditorPage() {
   // --- Parameters ---
   const addParameter = () => {
     const paramName = `param${content.parameters.length + 1}`
-    setContent((c) => ({ ...c, parameters: [...c.parameters, { name: paramName, label: paramName, dataType: 'str' }] }))
+    setContent((c) => ({ ...c, parameters: [...c.parameters, { name: paramName, label: paramName }] }))
     setSelection({ kind: 'parameter', name: paramName })
   }
   const updateParameter = (paramName: string, patch: Record<string, unknown>) => {
@@ -415,37 +429,38 @@ export function EditorPage() {
   }
   const copyDatastore = async (dsId: string) => {
     const ds = content.datastores.find((d) => d.id === dsId)
-    // ComponentTree already hides Copy for a global-scope row -- guarded again
-    // here in case this is ever reached another way.
+    // ComponentTree already hides Copy for a global-scope row -- a global
+    // reference here is just {id,name,scope}, no definition of its own to
+    // copy (copy that same shared datastore from the Manager's own Datastores
+    // panel instead, then Paste it here as a new local one -- see
+    // utils/datastoreClipboard.ts).
     if (!ds || ds.scope === 'global') return
     try {
-      await navigator.clipboard.writeText(JSON.stringify(ds, null, 2))
+      await navigator.clipboard.writeText(JSON.stringify(localRefToClipboard(ds), null, 2))
       toast.success('Copied.')
     } catch {
       toast.error('Clipboard access was denied.')
     }
   }
   const pasteDatastore = async () => {
-    const parsed = await readClipboardJson()
-    if (parsed === null) return
-    if (!isPanelDatastoreRef(parsed)) {
-      toast.error("Clipboard doesn't contain a datastore.")
-      return
+    try {
+      // Opens the rename dialog rather than adding it straight away, so a
+      // colliding name is a deliberate choice, not a silent "-2" suffix.
+      // Accepts clipboard content copied from either scope -- a local
+      // datastore (copied here) or a shared global one (copied from the
+      // Manager's own Datastores panel) -- always landing as a new local
+      // datastore on this panel either way.
+      setPasteDatastoreDraft(await readDatastoreClipboard())
+    } catch (err) {
+      toast.error(String(err))
     }
-    if (parsed.scope === 'global') {
-      toast.error("Global datastores can't be copied or pasted -- only local ones.")
-      return
-    }
-    // Opens the rename dialog rather than adding it straight away, so a
-    // colliding name is a deliberate choice, not a silent "-2" suffix.
-    setPasteDatastoreDraft(parsed)
   }
   const confirmPasteDatastore = async (name: string) => {
     if (!pasteDatastoreDraft) return
     if (content.datastores.some((d) => d.name === name)) {
       throw new Error(`A datastore named "${name}" already exists.`)
     }
-    const fresh = { ...pasteDatastoreDraft, id: newId('ds'), name }
+    const fresh = clipboardToLocalRef(pasteDatastoreDraft, newId('ds'), name)
     setContent((c) => ({ ...c, datastores: [...c.datastores, fresh] }))
     setSelection({ kind: 'datastore', id: fresh.id })
     toast.success('Pasted.')
@@ -707,7 +722,12 @@ export function EditorPage() {
     try {
       result =
         entry.scope === 'local'
-          ? await api.post<DatastorePreviewResult>('/datastores/preview-config/', { ...entry, params, limit: 2 })
+          ? await api.post<DatastorePreviewResult>('/datastores/preview-config/', {
+              ...entry,
+              params,
+              limit: 2,
+              local_datastores: localDatastoresPayload(content.datastores),
+            })
           : await api.post<DatastorePreviewResult>(`/datastores/${entry.name}/preview/`, { params, limit: 2 })
     } catch (err) {
       toast.error(String(err))
@@ -887,6 +907,7 @@ export function EditorPage() {
               datastoreOptions={datastoreOptions}
               drilldownOptions={drilldownOptions}
               linkOptions={linkOptions}
+              parameterOptions={parameterOptions}
               onUpdateParameter={updateParameter}
               onUpdateNode={updateContentNode}
               onUpdateDrilldown={updateDrilldown}
@@ -922,7 +943,6 @@ export function EditorPage() {
                     datastores={content.datastores}
                     content={content.content}
                     panelId={panelId}
-                    previewMode
                     key={content.parameters.map((p) => p.name).join(',')}
                   >
                     {/* LinkProvider outermost: DrilldownProvider's own popup dialog
@@ -1024,6 +1044,7 @@ export function EditorPage() {
         <DatastoreRefDialog
           initial={datastoreDialog.initial}
           globalDatastoreIds={globalDatastoreIds}
+          panelDatastores={content.datastores}
           connections={connections}
           onClose={() => setDatastoreDialog(null)}
           onSave={saveDatastoreRef}
@@ -1035,6 +1056,7 @@ export function EditorPage() {
           title="Paste datastore"
           label="Name"
           suggestedName={uniqueName(pasteDatastoreDraft.name, content.datastores.map((d) => d.name))}
+          submitLabel="Paste"
           onClone={confirmPasteDatastore}
           onClose={() => setPasteDatastoreDraft(null)}
         />
@@ -1047,7 +1069,12 @@ export function EditorPage() {
           onClose={() => setPreviewDatastore(null)}
           onRun={(params, limit) =>
             previewDatastore.ref.scope === 'local'
-              ? api.post<DatastorePreviewResult>('/datastores/preview-config/', { ...previewDatastore.ref, params, limit })
+              ? api.post<DatastorePreviewResult>('/datastores/preview-config/', {
+                  ...previewDatastore.ref,
+                  params,
+                  limit,
+                  local_datastores: localDatastoresPayload(content.datastores),
+                })
               : api.post<DatastorePreviewResult>(`/datastores/${previewDatastore.ref.name}/preview/`, { params, limit })
           }
         />
@@ -1100,6 +1127,7 @@ function SelectionProperties({
   datastoreOptions,
   drilldownOptions,
   linkOptions,
+  parameterOptions,
   onUpdateParameter,
   onUpdateNode,
   onUpdateDrilldown,
@@ -1112,6 +1140,7 @@ function SelectionProperties({
   datastoreOptions: string[]
   drilldownOptions: { id: string; name: string }[]
   linkOptions: { id: string; name: string }[]
+  parameterOptions: { id: string; name: string }[]
   onUpdateParameter: (name: string, patch: Record<string, unknown>) => void
   onUpdateNode: (id: string, patch: Record<string, unknown>) => void
   onUpdateDrilldown: (id: string, patch: Record<string, unknown>) => void
@@ -1125,13 +1154,16 @@ function SelectionProperties({
     const param = content.parameters.find((p) => p.name === selection.name)
     if (!param) return null
     return (
-      <PropertyPanel
-        title={`Parameter: ${param.name}`}
-        record={param as unknown as Record<string, unknown>}
-        schema={PARAMETER_SCHEMA}
-        datastoreOptions={datastoreOptions}
-        onChange={(patch) => onUpdateParameter(param.name, patch)}
-      />
+      <>
+        <PropertyPanel
+          title={`Parameter: ${param.name}`}
+          record={param as unknown as Record<string, unknown>}
+          schema={PARAMETER_SCHEMA}
+          datastoreOptions={datastoreOptions}
+          onChange={(patch) => onUpdateParameter(param.name, patch)}
+        />
+        <ParameterTypeConfig param={param} datastoreOptions={datastoreOptions} onUpdateParameter={onUpdateParameter} />
+      </>
     )
   }
 
@@ -1212,8 +1244,38 @@ function SelectionProperties({
       datastoreOptions={datastoreOptions}
       drilldownOptions={drilldownOptions}
       linkOptions={linkOptions}
+      parameterOptions={parameterOptions}
       onChange={(patch) => onUpdateNode(node.id, patch)}
     />
+  )
+}
+
+/** specs/parameters3.md: the "Configure <Type>..." button below a parameter's own PropertyPanel, and the dialog it opens -- only rendered once the parameter has a Parameter type (PanelParameter.inputType) set, since there's nothing type-specific to configure otherwise. */
+function ParameterTypeConfig({
+  param,
+  datastoreOptions,
+  onUpdateParameter,
+}: {
+  param: PanelParameter
+  datastoreOptions: string[]
+  onUpdateParameter: (name: string, patch: Record<string, unknown>) => void
+}) {
+  const [open, setOpen] = useState(false)
+  if (!param.inputType) return null
+  return (
+    <div className="px-3 pb-3">
+      <Button variant="outline" size="sm" className="w-full" onClick={() => setOpen(true)}>
+        Configure...
+      </Button>
+      {open && (
+        <ParameterTypeConfigDialog
+          parameter={param}
+          datastoreOptions={datastoreOptions}
+          onApply={(patch) => onUpdateParameter(param.name, patch)}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
   )
 }
 

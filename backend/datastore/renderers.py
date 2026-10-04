@@ -4,8 +4,9 @@ plain dicts -- the same shape datastore.engine.execute_query already
 returns for SQL, and what the frontend data grid controls already consume).
 
 Each renderer_type maps to a function below taking (raw, config) and
-returning list[dict]. To add a new renderer: add a function and register it
-in RENDERERS.
+returning list[dict] -- except 'none' ("No Processing"), which returns the
+raw text itself, unparsed (see render_none). To add a new renderer: add a
+function and register it in RENDERERS.
 """
 from __future__ import annotations
 
@@ -18,62 +19,14 @@ def _as_text(raw) -> str:
     return raw.decode('utf-8') if isinstance(raw, (bytes, bytearray)) else raw
 
 
-JSON_ORIENTS = ('records', 'index', 'columns', 'split', 'values')
-
-
-def _rows_from_orient(node, orient: str, index_name: str) -> list[dict]:
-    """Converts a pandas ``DataFrame.to_json(orient=...)`` structure into row dicts.
-
-    records: [{col: v}, ...] (handled by the caller, as-is)
-    index:   {idx: {col: v}}  -> one row per idx, idx stored under ``index_name``
-    columns: {col: {idx: v}}  -> one row per idx, idx stored under ``index_name``
-    split:   {"index": [...], "columns": [...], "data": [[...]]}
-    values:  [[v, ...], ...]  -> no labels; columns are named col1, col2, ...
-    An empty ``index_name`` omits the index column.
-    """
-    def with_index(idx, cells: dict) -> dict:
-        return {index_name: idx, **cells} if index_name else dict(cells)
-
-    if orient == 'index':
-        if not isinstance(node, dict):
-            raise ValueError('orient=index expects a JSON object of {index: {column: value}}.')
-        return [with_index(idx, cells if isinstance(cells, dict) else {'value': cells}) for idx, cells in node.items()]
-    if orient == 'columns':
-        if not isinstance(node, dict):
-            raise ValueError('orient=columns expects a JSON object of {column: {index: value}}.')
-        rows: dict = {}
-        for col, cells in node.items():
-            for idx, value in (cells if isinstance(cells, dict) else {}).items():
-                rows.setdefault(idx, {})[col] = value
-        return [with_index(idx, cells) for idx, cells in rows.items()]
-    if orient == 'split':
-        if not isinstance(node, dict) or 'data' not in node:
-            raise ValueError('orient=split expects a JSON object with "columns", "data" and optionally "index".')
-        columns = node.get('columns') or []
-        index = node.get('index')
-        out = []
-        for i, values in enumerate(node['data']):
-            cells = dict(zip(columns, values)) if columns else {f'col{j + 1}': v for j, v in enumerate(values)}
-            out.append(with_index(index[i], cells) if index and i < len(index) else cells)
-        return out
-    if orient == 'values':
-        if not isinstance(node, list):
-            raise ValueError('orient=values expects a JSON array of arrays.')
-        return [{f'col{j + 1}': v for j, v in enumerate(values)} for values in node]
-    raise ValueError(f'Unknown JSON orient: {orient}')
-
-
 def render_json(raw, config: dict) -> list[dict]:
-    """JsonPath-based extraction: config = {"root_path"?, "orient"?, "index_name"?, "columns": [{"name", "path"}]}.
+    """JsonPath-based extraction: config = {"root_path"?, "columns": [{"name", "path"}]}.
 
     ``root_path`` (default "$") selects the row nodes; when it resolves to a
-    single JSON array, that array's elements are the rows. ``orient`` (as in
-    pandas ``to_json``; default "records") says how the selected node is laid
-    out -- records, index, columns, split or values -- and is first converted
-    to row dicts (see _rows_from_orient); ``index_name`` (default "index")
-    names the column holding the row labels for index/columns/split. Each
-    column's ``path`` is a JsonPath evaluated relative to the row node --
-    omit ``columns`` entirely to pass matched row objects through as-is.
+    single JSON array, that array's elements are the rows. Each column's
+    ``path`` is a JsonPath evaluated relative to its own row node (not the
+    whole document) -- omit ``columns`` entirely to pass matched row objects
+    through as-is.
     """
     from jsonpath_ng.ext import parse
 
@@ -86,14 +39,7 @@ def render_json(raw, config: dict) -> list[dict]:
     doc = json.loads(_as_text(raw)) if isinstance(raw, (str, bytes, bytearray)) else raw
     root_path = config.get('root_path') or '$'
     row_nodes = [match.value for match in parse(root_path).find(doc)]
-    orient = config.get('orient') or 'records'
-    if orient not in JSON_ORIENTS:
-        raise ValueError(f'Unknown JSON orient: {orient}')
-    if orient != 'records':
-        if len(row_nodes) != 1:
-            raise ValueError(f'orient={orient} needs root_path to select exactly one node (matched {len(row_nodes)}).')
-        row_nodes = _rows_from_orient(row_nodes[0], orient, config.get('index_name', 'index'))
-    elif len(row_nodes) == 1 and isinstance(row_nodes[0], list):
+    if len(row_nodes) == 1 and isinstance(row_nodes[0], list):
         row_nodes = row_nodes[0]
 
     columns = config.get('columns') or []
@@ -169,6 +115,20 @@ def render_delimited(raw, config: dict) -> list[dict]:
     return [dict(zip(names, row)) for row in data_rows]
 
 
+def render_none(raw, config: dict):
+    """'No Processing' (Datastore.RENDERER_NONE): passes the raw fetched
+    content straight through as text, with no row parsing at all -- used
+    when this datastore exists purely to supply raw content to another
+    datastore (access_type=datastore, see services.get_datastore_raw_output),
+    or when the raw document itself, not a parsed table, is genuinely what's
+    wanted. Unlike every other renderer here, this does NOT return list[dict]
+    -- callers that always expect tabular rows (row_limit slicing, a table
+    control) degrade gracefully (see services._run_uncached's isinstance
+    check; a control just renders it as an empty table).
+    """
+    return _as_text(raw)
+
+
 def render_fixed_width(raw, config: dict) -> list[dict]:
     """config = {"fields": [{"name": "col1", "width": 10}, ...]} -- fields read left to right."""
     text = _as_text(raw)
@@ -188,6 +148,7 @@ def render_fixed_width(raw, config: dict) -> list[dict]:
 
 
 RENDERERS = {
+    'none': render_none,
     'json': render_json,
     'xml': render_xml,
     'delimited': render_delimited,

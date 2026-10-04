@@ -14,6 +14,8 @@ interface Props {
   /** Pre-filled as "{item name}-copy". */
   suggestedName: string
   helperText?: string
+  /** Submit button text -- defaults to "Clone"; a "Paste" flow (same name-prompt-then-callback shape, see EditorPage.tsx/DatastoresPanel.tsx) passes "Paste" instead. */
+  submitLabel?: string
   onClone: (name: string) => Promise<void>
   onClose: () => void
 }
@@ -25,7 +27,7 @@ interface Props {
  * a connection's password, which the client never otherwise sees, carry
  * over correctly instead of being read back redacted).
  */
-export function CloneDialog({ title, label, suggestedName, helperText, onClone, onClose }: Props) {
+export function CloneDialog({ title, label, suggestedName, helperText, submitLabel = 'Clone', onClone, onClose }: Props) {
   const [name, setName] = useState(suggestedName)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -67,7 +69,7 @@ export function CloneDialog({ title, label, suggestedName, helperText, onClone, 
             Cancel
           </Button>
           <Button size="sm" onClick={handleClone} disabled={saving || !name.trim()}>
-            Clone
+            {submitLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

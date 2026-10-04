@@ -219,16 +219,33 @@ function lerpRgb(a: [number, number, number], b: [number, number, number], t: nu
 }
 
 /**
+ * colorScale parses a cell's raw value with parseFloat regardless of the
+ * column's own `dataType` label (that field only drives *display*
+ * formatting elsewhere -- a column left at the default 'str' with genuinely
+ * numeric values, e.g. from a loosely-typed datastore, is exactly as
+ * colorable as one explicitly marked 'number'). The one thing this guards
+ * against: 'date'/'datetime' values like "2024-01-15" parseFloat to 2024 --
+ * a real number, just a meaningless one to scale against -- and 'badge' is
+ * categorical, not a range. Those three are excluded; everything else
+ * (unset, 'str', 'number') is eligible, gated for real by whether a given
+ * value parses as finite.
+ */
+export function isColorScaleEligibleDataType(dataType: PanelNode['dataType']): boolean {
+  return dataType !== 'date' && dataType !== 'datetime' && dataType !== 'badge'
+}
+
+/**
  * Persistent cell background for PanelNode.colorScale -- undefined (no
- * color) when the scale is off, the column isn't numeric, the value doesn't
- * parse as a finite number, or `domain` is degenerate (min===max: nothing to
- * scale against, e.g. every loaded row has the same value, or there's only
- * one row). 'sequential' interpolates low->high across the whole domain;
- * 'diverging' interpolates low->mid over the bottom half and mid->high over
- * the top half.
+ * color) when the scale is off, the column's dataType can't be scaled (see
+ * isColorScaleEligibleDataType), the value doesn't parse as a finite
+ * number, or `domain` is degenerate (min===max: nothing to scale against,
+ * e.g. every loaded row has the same value, or there's only one row).
+ * 'sequential' interpolates low->high across the whole domain; 'diverging'
+ * interpolates low->mid over the bottom half and mid->high over the top
+ * half.
  */
 function colorScaleStyle(value: unknown, col: PanelNode, domain: ColorScaleDomain | undefined): CSSProperties | undefined {
-  if (!col.colorScale || col.colorScale === 'none' || col.dataType !== 'number' || !domain) return undefined
+  if (!col.colorScale || col.colorScale === 'none' || !isColorScaleEligibleDataType(col.dataType) || !domain) return undefined
   const num = typeof value === 'number' ? value : parseFloat(String(value))
   if (!Number.isFinite(num) || domain.min === domain.max) return undefined
   const t = Math.min(1, Math.max(0, (num - domain.min) / (domain.max - domain.min)))
@@ -238,6 +255,22 @@ function colorScaleStyle(value: unknown, col: PanelNode, domain: ColorScaleDomai
 
 /** Column id -> its colorScale domain, from DatatableControl's own useMemo -- absent/no entry means that column isn't color-scaled (or has no domain to scale against yet). */
 export type ColorScaleDomains = Map<string, ColorScaleDomain>
+
+/** Shared bucket key for every column named in the datatable's own `colorScaleGroup` list -- never collides with a real column id (editor-assigned, never starting with "__"). */
+const COLOR_SCALE_GROUP_KEY = '__colorScaleGroup__'
+
+/**
+ * Groups color-scaled columns for domain-sharing purposes (DatatableControl's
+ * colorScaleDomains useMemo) -- a datatable-level setting (`colorScaleGroup`
+ * on the datatable node itself, not the column) names which of its columns'
+ * fields combine into one shared min/max range. A column not named there
+ * falls back to its own id, i.e. a "group" of just itself, which is exactly
+ * today's (pre-grouping) per-column behavior.
+ */
+export function colorScaleGroupKey(col: PanelNode, groupFields: string[] | undefined): string {
+  if (col.field && groupFields?.includes(col.field)) return COLOR_SCALE_GROUP_KEY
+  return col.id
+}
 
 /**
  * A column's filter control, rendered inside its own header (REUI's

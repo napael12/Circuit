@@ -12,8 +12,7 @@ from rest_framework.viewsets import ModelViewSet
 from breadboard.access import visible_queryset
 from breadboard.permissions import DashboardRoleAccess, IsAdmin, IsAdminOrReadOnly
 from breadboard.slugs import unique_slug_id
-from datastore.models import Datastore
-from datastore.services import run_datastore
+from datastore.services import datastore_from_dict, run_datastore
 
 from .models import Panel, PanelFavorite, PanelUpdate, PanelUsage
 from .serializers import PanelSerializer
@@ -286,28 +285,14 @@ class PanelViewSet(ModelViewSet):
         if local is None:
             return Response({'detail': 'Unknown local datastore'}, status=404)
 
-        ds = Datastore(
-            source_type=local.get('source_type') or Datastore.SOURCE_QUERY,
-            access_type=local.get('access_type') or '',
-            connection_id=local.get('connection') or None,
-            inline_sql=local.get('inline_sql') or '',
-            row_limit=local.get('row_limit') or None,
-            object_key=local.get('object_key') or '',
-            object_url=local.get('object_url') or '',
-            body=local.get('body') or '',
-            data_url=local.get('data_url') or '',
-            request_method=local.get('request_method') or Datastore.METHOD_GET,
-            request_params=local.get('request_params') or {},
-            request_body=local.get('request_body') or '',
-            file_path=local.get('file_path') or '',
-            file_expression=local.get('file_expression') or '',
-            renderer_type=local.get('renderer_type') or Datastore.RENDERER_NONE,
-            renderer_config=local.get('renderer_config') or {},
-            set_parameter_name=local.get('set_parameter_name') or '',
-            default_params=local.get('default_params') or {},
-        )
-        result, set_parameter_value = run_datastore(ds, request.data.get('params'))
-        return Response({'data': result, 'set_parameter_value': set_parameter_value})
+        ds = datastore_from_dict(local)
+        # access_type=datastore (services._fetch_serialized_raw): the source
+        # it names might be another *local* datastore in this same panel,
+        # which only this view can resolve (datastore.services has no panel
+        # context of its own) -- built once here, by name, and handed down.
+        local_datastores = {d['name']: datastore_from_dict(d) for d in local_defs if d.get('name')}
+        result = run_datastore(ds, request.data.get('params'), local_datastores=local_datastores)
+        return Response({'data': result})
 
     @action(detail=False, methods=['post'], permission_classes=[IsAdminOrReadOnly])
     def upload(self, request):

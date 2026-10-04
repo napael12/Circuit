@@ -54,8 +54,13 @@ class BrandingView(APIView):
 
     DEFAULTS = {
         'app.name': 'Circuit',
-        'app.icon': '/circuit.png',
-        'app.favicon': '/circuit.png',
+        # Served from STATIC_URL (see breadboard/settings.py) since the built
+        # frontend is served under /static/ (frontend/vite.config.ts base) --
+        # a plain '/circuit.png' 404s on the monosite build and falls through
+        # to the SPA catch-all route (breadboard/views.py), which serves
+        # index.html instead of the image.
+        'app.icon': '/static/circuit.png',
+        'app.favicon': '/static/circuit.png',
         'app.version': '1.0.0',
     }
 

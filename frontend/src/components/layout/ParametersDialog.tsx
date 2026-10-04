@@ -1,9 +1,17 @@
 import { useState } from 'react'
+import { format as formatDate, isValid as isValidDate, parse as parseDate } from 'date-fns'
+import { CalendarIcon, XIcon } from 'lucide-react'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Calendar } from '@/components/ui/calendar'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Slider } from '@/components/ui/slider'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
 import type { PanelDatastoreRef, PanelParameter } from '../../api/types'
@@ -71,7 +79,177 @@ export function ParametersDialog({ open, onClose, parameters, datastores }: Prop
   )
 }
 
-/** Exported for ParametersControl.tsx (an inline, always-applied alternative to this dialog's own draft+Apply form) -- same field-type-per-parameter logic (plain input, single-column select, or a multi-column lookup table), reused rather than duplicated. */
+function parseFormatted(value: string, fmt: string): Date | undefined {
+  if (!value) return undefined
+  const date = parseDate(value, fmt, new Date())
+  return isValidDate(date) ? date : undefined
+}
+
+/**
+ * PanelParameter.inputType='range' -- a two-thumb Slider
+ * (PanelParameter.rangeMin/rangeMax/rangeStep, defaulting to 0/100/1). A
+ * value outside [min,max] (e.g. a still-default "" before the user has
+ * touched it) clamps to that end rather than producing a thumb off the
+ * visible track. displayTicks adds a tick mark at every step -- capped at
+ * 50 marks so a tiny step over a huge range doesn't paint hundreds of them.
+ */
+function RangeSliderField({ param, value, onChange }: { param: PanelParameter; value: string; onChange: (value: string) => void }) {
+  const min = param.rangeMin ?? 0
+  const max = param.rangeMax ?? 100
+  const step = param.rangeStep ?? 1
+  const [fromRaw, toRaw] = value.split(',')
+  const clamp = (n: number) => Math.min(max, Math.max(min, n))
+  const from = fromRaw !== undefined && fromRaw !== '' && Number.isFinite(Number(fromRaw)) ? clamp(Number(fromRaw)) : min
+  const to = toRaw !== undefined && toRaw !== '' && Number.isFinite(Number(toRaw)) ? clamp(Number(toRaw)) : max
+  const tickCount = step > 0 && max > min ? Math.round((max - min) / step) : 0
+  const ticks = param.displayTicks && tickCount > 0 && tickCount <= 50 ? Array.from({ length: tickCount + 1 }, (_, i) => (i / tickCount) * 100) : []
+
+  return (
+    <div className="flex flex-col gap-2 px-0.5 py-1">
+      <div className="flex items-center justify-between text-[0.78em] text-muted-foreground">
+        <span>{from}</span>
+        <span>{to}</span>
+      </div>
+      <Slider value={[from, to]} min={min} max={max} step={step} onValueChange={([nextFrom, nextTo]) => onChange(`${nextFrom},${nextTo}`)} />
+      {ticks.length > 0 && (
+        <div className="relative h-1.5">
+          {ticks.map((pct) => (
+            <span key={pct} className="absolute top-0 h-1.5 w-px bg-border" style={{ left: `${pct}%` }} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** PanelParameter.inputType='calendar' -- a popover date picker, in the parameter's own calendarFormat (date-fns pattern, default "yyyy-MM-dd"). */
+function CalendarField({ value, format: fmt, onChange }: { value: string; format: string; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" className="h-8 w-full justify-start gap-1.5 px-2.5 text-[0.85em] font-normal">
+          <CalendarIcon className="size-3.5 text-muted-foreground" />
+          {value || <span className="text-muted-foreground">Pick a date...</span>}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={parseFormatted(value, fmt)}
+          onSelect={(date) => {
+            onChange(date ? formatDate(date, fmt) : '')
+            setOpen(false)
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** PanelParameter.selectorDelimiter/selectorEnclosure -- e.g. 'AAPL','MSFT' with the defaults (",", "'"). Wraps every value when an enclosure is set, so a value containing the delimiter itself still round-trips through decodeMultiValues below. */
+function encodeMultiValues(values: string[], delimiter: string, enclosure: string): string {
+  return values.map((v) => (enclosure ? `${enclosure}${v}${enclosure}` : v)).join(delimiter)
+}
+
+/** Inverse of encodeMultiValues -- with an enclosure set, matches complete enclosure...enclosure segments (tolerant of a delimiter appearing inside one, since it only ever has to parse what the encoder itself produced) rather than a naive split; falls back to a plain split if that finds nothing (e.g. a value saved before an enclosure was configured). */
+function decodeMultiValues(raw: string, delimiter: string, enclosure: string): string[] {
+  if (!raw) return []
+  if (!enclosure) return raw.split(delimiter)
+  const re = new RegExp(`${escapeRegExp(enclosure)}(.*?)${escapeRegExp(enclosure)}`, 'g')
+  const matches = [...raw.matchAll(re)].map((m) => m[1])
+  return matches.length > 0 ? matches : raw.split(delimiter)
+}
+
+/**
+ * PanelParameter.inputType='selector-multi' -- the same searchable-combobox
+ * pattern reui's own Select docs point to for multi-select (reui's actual
+ * Select component is single-select only -- see
+ * https://reui.io/components/select -- so this is built from its lower-level
+ * Command/Popover/Badge primitives instead of a single drop-in component).
+ * Selected options show as removable chips in the trigger; `value` stays one
+ * flattened string, delimiter-joined and optionally enclosure-wrapped (see
+ * encodeMultiValues/decodeMultiValues) -- never an array.
+ */
+function SelectorMultiField({
+  options,
+  delimiter,
+  enclosure,
+  value,
+  onChange,
+}: {
+  options: string[]
+  delimiter: string
+  enclosure: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const selected = decodeMultiValues(value, delimiter, enclosure)
+  const toggle = (opt: string) =>
+    onChange(encodeMultiValues(selected.includes(opt) ? selected.filter((v) => v !== opt) : [...selected, opt], delimiter, enclosure))
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" className="h-auto min-h-8 w-full justify-start px-2 py-1 text-[0.85em] font-normal">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+            {selected.length === 0 ? (
+              <span className="px-0.5 text-muted-foreground">Select...</span>
+            ) : (
+              selected.map((opt) => (
+                <Badge key={opt} variant="secondary" className="gap-1 text-[0.8em]">
+                  <span className="max-w-32 truncate">{opt}</span>
+                  {/* span, not a nested <button> -- this already sits inside the trigger's own <button>. stopPropagation keeps the click from also toggling the popover via the trigger's own handler. */}
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggle(opt)
+                    }}
+                    className="rounded-full hover:bg-muted-foreground/20"
+                  >
+                    <XIcon className="size-3" />
+                  </span>
+                </Badge>
+              ))
+            )}
+          </div>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[260px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search..." />
+          <CommandList>
+            <CommandEmpty>No options.</CommandEmpty>
+            <CommandGroup>
+              {options.map((opt) => (
+                <CommandItem key={opt} value={opt} data-checked={selected.includes(opt)} onSelect={() => toggle(opt)}>
+                  {opt}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/** PanelParameter.toggleValues ("<on>|<off>", e.g. "yes|no") -- defaults to ['true','false'] when unset/blank, or either half is missing (a trailing "|" with nothing after it, etc.). */
+function toggleValuePair(param: PanelParameter): [on: string, off: string] {
+  const raw = param.toggleValues?.trim()
+  if (!raw) return ['true', 'false']
+  const [on, off] = raw.split('|')
+  return [on || 'true', off || 'false']
+}
+
+/** Exported for ParametersControl.tsx (an inline, always-applied alternative to this dialog's own draft+Apply form) -- same field-type-per-parameter logic reused rather than duplicated. inputType branches (calendar/range/selector-single/selector-multi/toggle -- PanelParameter.inputType) come first; an unset inputType falls through to the original plain input / datastore-driven select / lookup-table logic, unchanged. */
 export function ParamField({
   param,
   datastores,
@@ -88,20 +266,65 @@ export function ParamField({
 }) {
   const panelId = usePanelId()
   const { data } = useDatastore(param.datastore, datastores, {}, panelId, previewMode)
+  const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : []
+  const columns = Object.keys(rows[0] ?? {})
+  const valueColumn = param.selectorColumn || columns[0]
+  const options = Array.from(new Set(rows.map((row) => String(row[valueColumn] ?? '')))).filter(Boolean)
+
+  if (param.inputType === 'toggle') {
+    const [onValue, offValue] = toggleValuePair(param)
+    return <Switch checked={value === onValue} onCheckedChange={(checked) => onChange(checked ? onValue : offValue)} />
+  }
+
+  if (param.inputType === 'range') {
+    return <RangeSliderField param={param} value={value} onChange={onChange} />
+  }
+
+  if (param.inputType === 'calendar') {
+    return <CalendarField value={value} format={param.calendarFormat || 'yyyy-MM-dd'} onChange={onChange} />
+  }
+
+  if (param.inputType === 'selector-multi' && param.datastore) {
+    return (
+      <SelectorMultiField
+        options={options}
+        delimiter={param.selectorDelimiter || ','}
+        enclosure={param.selectorEnclosure ?? "'"}
+        value={value}
+        onChange={onChange}
+      />
+    )
+  }
+
+  if (param.inputType === 'selector-single' && param.datastore) {
+    return (
+      <Select value={value || undefined} onValueChange={onChange}>
+        <SelectTrigger className="h-8 w-full text-[0.85em]">
+          <SelectValue placeholder="Select..." />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => (
+            <SelectItem key={opt} value={opt}>
+              {opt}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    )
+  }
 
   if (param.datastore) {
-    const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : []
-    const columns = Object.keys(rows[0] ?? {})
-    const valueColumn = param.selectorColumn || columns[0]
-
-    // A single-column datastore is still just a plain value list -- the
-    // lookup table only earns its keep once there's other columns to give
-    // each option context (see PanelParameter.selectorColumn).
+    // No Parameter type picked, but `datastore` is set anyway -- the
+    // pre-parameters2.md fallback, kept only for backward compatibility
+    // with already-saved parameters like that (e.g. the demo dashboard's
+    // "stock" parameter). A single-column datastore is still just a plain
+    // value list -- the lookup table only earns its keep once there's
+    // other columns to give each option context (see
+    // PanelParameter.selectorColumn).
     if (columns.length > 1) {
       return <SelectorTableField rows={rows} columns={columns} valueColumn={valueColumn} value={value} onChange={onChange} />
     }
 
-    const options = Array.from(new Set(rows.map((row) => String(row[valueColumn] ?? '')))).filter(Boolean)
     return (
       <select
         value={value}
@@ -120,7 +343,7 @@ export function ParamField({
 
   return (
     <Input
-      type={param.dataType === 'date' ? 'date' : param.dataType === 'number' ? 'number' : 'text'}
+      type="text"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className="text-[0.85em]"

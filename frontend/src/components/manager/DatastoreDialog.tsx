@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTable, type ColumnDef } from '@tanstack/react-table'
 import { ChevronRight, Copy, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -18,11 +18,12 @@ import { dataGridFeatures, type DataGridFeatures } from '../reui/data-grid/data-
 import { DataGridColumnHeader } from '../reui/data-grid/data-grid-column-header'
 import { api } from '../../api/client'
 import type { DataConnection, Datastore, DatastorePreviewResult, PanelDatastoreRef, RendererType, Role } from '../../api/types'
+import { localDatastoresPayload } from '../../utils/localDatastores'
 import { discoverAllParams } from '../../utils/sqlParams'
 import { newId } from '../editor/panelTree'
 import { RoleMultiSelect } from './RoleMultiSelect'
 import { DatastorePreviewPanel } from './DatastorePreviewPanel'
-import { SerializedDataFields } from './SerializedDataFields'
+import { SerializedDataFields, type DatastoreRefOption } from './SerializedDataFields'
 import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
 
 interface Option {
@@ -31,8 +32,13 @@ interface Option {
 }
 
 interface Props {
-  /** null = creating a new datastore. */
-  initial: Datastore | null
+  /**
+   * null = creating a new datastore. scope='local' callers (DatastoreRefDialog)
+   * adapt their PanelDatastoreRef into this shape (see refToDatastore there)
+   * and tack on `source_datastore_scope`, which has no equivalent on a global
+   * Datastore row -- see Datastore.source_datastore's own doc comment.
+   */
+  initial: (Datastore & { source_datastore_scope?: 'global' | 'local' }) | null
   connections: DataConnection[]
   /** Unused (and unnecessary to fetch) when scope='local' -- Access roles don't apply there. */
   roles?: Role[]
@@ -53,6 +59,23 @@ interface Props {
   onSaved?: () => void
   /** scope='local' only: receives the built PanelDatastoreRef instead of an API call being made. */
   onSaveLocal?: (ref: PanelDatastoreRef) => void
+  /**
+   * Every other datastore this one could reference via Accessing Data =
+   * 'Datastore' (self already excluded by the caller). scope='global'
+   * callers only ever have scope='global' entries to offer (a saved/global
+   * Datastore row has no panel to resolve a local name against); the
+   * editor's DatastoreRefDialog passes both scopes.
+   */
+  availableDatastoreRefs?: DatastoreRefOption[]
+  /**
+   * scope='local' only: this panel's own content.datastores, so the Preview
+   * tab can send them along as `local_datastores` -- when this (possibly
+   * still-unsaved) datastore's own Accessing Data = 'Datastore' names a
+   * *local* sibling, that sibling has no saved row to resolve against
+   * either, so its in-progress definition has to ride along too (see
+   * backend datastore.views.DatastoreViewSet.preview_config).
+   */
+  localSiblings?: PanelDatastoreRef[]
 }
 
 interface ParamRow {
@@ -85,10 +108,12 @@ export function DatastoreDialog({
   onClose,
   onSaved,
   onSaveLocal,
+  availableDatastoreRefs = [],
+  localSiblings = [],
 }: Props) {
   const isEdit = initial !== null
   const isLocal = scope === 'local'
-  const [tab, setTab] = useState<'edit' | 'preview'>(initialTab)
+  const [tab, setTab] = useState<'edit' | 'dataflow' | 'permissions' | 'preview'>(initialTab)
   const [id, setId] = useState(initial?.id ?? '')
   const [sourceType, setSourceType] = useState<Datastore['source_type']>(initial?.source_type ?? 'query')
   const [connection, setConnection] = useState(initial?.connection ?? '')
@@ -106,17 +131,19 @@ export function DatastoreDialog({
   const [requestBody, setRequestBody] = useState(initial?.request_body ?? '')
   const [filePath, setFilePath] = useState(initial?.file_path ?? '')
   const [fileExpression, setFileExpression] = useState(initial?.file_expression ?? '')
-  const [rendererType, setRendererType] = useState<RendererType>(initial?.renderer_type ?? 'none')
+  // 'json' is a sensible default for a brand-new serialized datastore;
+  // editing an existing one always shows whatever was actually saved,
+  // including 'none' (No Processing).
+  const [rendererType, setRendererType] = useState<RendererType>(initial?.renderer_type ?? 'json')
   const [rendererConfig, setRendererConfig] = useState<Record<string, unknown>>(initial?.renderer_config ?? {})
-  // source_type=serialized only offers json/xml/delimited (no "None" option)
-  // -- a brand-new serialized datastore starts at renderer_type='none', so
-  // this is what's actually shown/saved until the user picks one explicitly.
-  const effectiveRendererType = sourceType === 'serialized' && rendererType === 'none' ? 'json' : rendererType
+  const [sourceDatastore, setSourceDatastore] = useState(initial?.source_datastore ?? '')
+  const [sourceDatastoreScope, setSourceDatastoreScope] = useState<'global' | 'local'>(
+    initial?.source_datastore_scope ?? 'global',
+  )
   // Push posts a raw JSON body straight through the JSON renderer
   // (breadboard.public_api.PushDatastoreView) -- only while this datastore's
   // own renderer is JSON.
-  const pushEligible = sourceType === 'serialized' && effectiveRendererType === 'json'
-  const [setParameterName, setSetParameterName] = useState(initial?.set_parameter_name ?? '')
+  const pushEligible = sourceType === 'serialized' && rendererType === 'json'
   const [apiMode, setApiMode] = useState<Datastore['api_mode']>(initial?.api_mode ?? 'none')
   const [refreshMode, setRefreshMode] = useState<Datastore['refresh_mode']>(initial?.refresh_mode ?? 'on_demand')
   const [cronSchedule, setCronSchedule] = useState(initial?.cron_schedule ?? '')
@@ -128,6 +155,14 @@ export function DatastoreDialog({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [allowedRoles, setAllowedRoles] = useState<number[]>(initial?.allowed_roles ?? [])
+
+  // Only the Type selector (new, un-saved datastores) can make a currently-
+  // open tab vanish (Data Flow only exists for sourceType='serialized') --
+  // fall back to Configuration rather than leaving the Tabs on a value with
+  // no matching trigger/content.
+  useEffect(() => {
+    if (tab === 'dataflow' && sourceType !== 'serialized') setTab('edit')
+  }, [tab, sourceType])
 
   const connectionOptions = useMemo<Option[]>(() => {
     const type =
@@ -154,6 +189,14 @@ export function DatastoreDialog({
   const rolesLocked = inheritedRoleIds.length > 0
   const displayedRoleIds = rolesLocked ? inheritedRoleIds : allowedRoles
 
+  // Excludes this datastore itself from its own "Datastore" access-type
+  // picker -- compared by (scope, name) since 'id' changes live as the
+  // Name field is edited.
+  const filteredDatastoreRefs = useMemo(
+    () => availableDatastoreRefs.filter((r) => !(r.scope === scope && r.name === id)),
+    [availableDatastoreRefs, scope, id],
+  )
+
   const discoveredParamNames = useMemo(() => {
     const sources = [
       inlineSql,
@@ -164,11 +207,15 @@ export function DatastoreDialog({
       requestBody,
       filePath,
       fileExpression,
+      sourceDatastore,
       JSON.stringify(requestParams),
       JSON.stringify(rendererConfig),
     ]
     return new Set(discoverAllParams(...sources))
-  }, [inlineSql, objectKey, objectUrl, body, dataUrl, requestBody, filePath, fileExpression, requestParams, rendererConfig])
+  }, [
+    inlineSql, objectKey, objectUrl, body, dataUrl, requestBody, filePath, fileExpression,
+    sourceDatastore, requestParams, rendererConfig,
+  ])
 
   const paramRows = useMemo<ParamRow[]>(() => {
     const names = new Set([...discoveredParamNames, ...Object.keys(defaultParams)])
@@ -257,6 +304,12 @@ export function DatastoreDialog({
     initialState: managerGridInitialState,
   })
 
+  // accessType='embedded' means `body` *is* the configured source (always
+  // sent, no toggle needed, see SerializedDataFields' Content field) --
+  // every other access type keeps the collapsible test-override behavior
+  // (only sent while the user has it open).
+  const includeBody = bodyOpen || accessType === 'embedded'
+
   const buildPayload = () => ({
     id,
     source_type: sourceType,
@@ -268,7 +321,7 @@ export function DatastoreDialog({
     cache_seconds: isLocal || cacheSeconds === '' ? null : cacheSeconds,
     object_key: sourceType === 'serialized' && accessType === 's3' ? objectKey : '',
     object_url: sourceType === 'serialized' && accessType === 's3' ? objectUrl : '',
-    body: sourceType === 'serialized' && bodyOpen ? body : '',
+    body: sourceType === 'serialized' && includeBody ? body : '',
     data_url: sourceType === 'serialized' && accessType === 'http' ? dataUrl : '',
     request_method: sourceType === 'serialized' && accessType === 'http' ? requestMethod : 'GET',
     request_params: sourceType === 'serialized' && accessType === 'http' ? requestParams : {},
@@ -276,9 +329,9 @@ export function DatastoreDialog({
       sourceType === 'serialized' && accessType === 'http' && requestMethod === 'POST' ? requestBody : '',
     file_path: sourceType === 'serialized' && accessType === 'file' ? filePath : '',
     file_expression: sourceType === 'serialized' && accessType === 'file' ? fileExpression : '',
-    renderer_type: sourceType === 'serialized' ? effectiveRendererType : 'none',
+    renderer_type: sourceType === 'serialized' ? rendererType : 'none',
     renderer_config: sourceType === 'serialized' ? rendererConfig : {},
-    set_parameter_name: setParameterName,
+    source_datastore: sourceType === 'serialized' && accessType === 'datastore' ? sourceDatastore : '',
     default_params: defaultParams,
     // Push is only ever meaningful for serialized datastores using the JSON
     // renderer (enforced again server-side in DatastoreSerializer.validate)
@@ -314,7 +367,7 @@ export function DatastoreDialog({
     row_limit: rowLimit === '' ? undefined : rowLimit,
     object_key: sourceType === 'serialized' && accessType === 's3' ? objectKey : '',
     object_url: sourceType === 'serialized' && accessType === 's3' ? objectUrl : '',
-    body: sourceType === 'serialized' && bodyOpen ? body : '',
+    body: sourceType === 'serialized' && includeBody ? body : '',
     data_url: sourceType === 'serialized' && accessType === 'http' ? dataUrl : '',
     request_method: sourceType === 'serialized' && accessType === 'http' ? requestMethod : 'GET',
     request_params: sourceType === 'serialized' && accessType === 'http' ? requestParams : {},
@@ -322,9 +375,10 @@ export function DatastoreDialog({
       sourceType === 'serialized' && accessType === 'http' && requestMethod === 'POST' ? requestBody : '',
     file_path: sourceType === 'serialized' && accessType === 'file' ? filePath : '',
     file_expression: sourceType === 'serialized' && accessType === 'file' ? fileExpression : '',
-    renderer_type: sourceType === 'serialized' ? effectiveRendererType : 'none',
+    renderer_type: sourceType === 'serialized' ? rendererType : 'none',
     renderer_config: sourceType === 'serialized' ? rendererConfig : {},
-    set_parameter_name: setParameterName,
+    source_datastore: sourceType === 'serialized' && accessType === 'datastore' ? sourceDatastore : undefined,
+    source_datastore_scope: sourceType === 'serialized' && accessType === 'datastore' ? sourceDatastoreScope : undefined,
     default_params: defaultParams,
   })
 
@@ -370,11 +424,13 @@ export function DatastoreDialog({
         </DialogHeader>
         <Tabs
           value={tab}
-          onValueChange={(v) => setTab(v as 'edit' | 'preview')}
+          onValueChange={(v) => setTab(v as 'edit' | 'dataflow' | 'permissions' | 'preview')}
           className="min-h-0 min-w-0 flex-1 gap-3"
         >
           <TabsList variant="line">
-            <TabsTrigger value="edit">Edit</TabsTrigger>
+            <TabsTrigger value="edit">Configuration</TabsTrigger>
+            {sourceType === 'serialized' && <TabsTrigger value="dataflow">Data Flow</TabsTrigger>}
+            {!isLocal && <TabsTrigger value="permissions">Permissions</TabsTrigger>}
             <TabsTrigger value="preview">Preview</TabsTrigger>
           </TabsList>
 
@@ -440,21 +496,6 @@ export function DatastoreDialog({
               )}
             </div>
 
-            {!isLocal && (
-              <RoleMultiSelect
-                roles={roles}
-                value={displayedRoleIds}
-                onChange={setAllowedRoles}
-                disabled={rolesLocked}
-                collapsible
-                helperText={
-                  rolesLocked
-                    ? `Inherited from connection "${effectiveConnection?.id}" -- edit its access roles to change this.`
-                    : undefined
-                }
-              />
-            )}
-
             {sourceType === 'query' && (
               <Field label="Query" helperText='Use :paramname bind variables, or ${paramname} to substitute the value directly into the text'>
                 <Textarea
@@ -466,59 +507,12 @@ export function DatastoreDialog({
               </Field>
             )}
 
-            {sourceType === 'serialized' && (
-              <SerializedDataFields
-                accessType={accessType}
-                onAccessTypeChange={setAccessType}
-                connectionOptions={connectionOptions}
-                connection={connection}
-                onConnectionChange={setConnection}
-                dataUrl={dataUrl}
-                onDataUrlChange={setDataUrl}
-                requestMethod={requestMethod}
-                onRequestMethodChange={setRequestMethod}
-                requestParams={requestParams}
-                onRequestParamsChange={setRequestParams}
-                requestBody={requestBody}
-                onRequestBodyChange={setRequestBody}
-                objectKey={objectKey}
-                onObjectKeyChange={setObjectKey}
-                objectUrl={objectUrl}
-                onObjectUrlChange={setObjectUrl}
-                filePath={filePath}
-                onFilePathChange={setFilePath}
-                fileExpression={fileExpression}
-                onFileExpressionChange={setFileExpression}
-                rendererType={effectiveRendererType}
-                rendererConfig={rendererConfig}
-                onRendererChange={(t, c) => {
-                  setRendererType(t)
-                  setRendererConfig(c)
-                }}
-                body={body}
-                onBodyChange={setBody}
-                bodyOpen={bodyOpen}
-                onBodyOpenChange={setBodyOpen}
-              />
-            )}
-
             <Field label="Row limit" helperText="Max rows/records returned per call">
               <Input
                 type="number"
                 value={rowLimit}
                 onChange={(e) => setRowLimit(e.target.value === '' ? '' : Number(e.target.value))}
                 className="h-8 text-[0.85em]"
-              />
-            </Field>
-
-            <Field
-              label="Set parameter"
-              helperText="Panel parameter to write this datastore's entire result into, whenever its data loads -- with or without a control displaying it. SQL: the rows, as JSON. Serialized: the raw fetched content as-is (its own native JSON/XML/delimited text). Blank = disabled"
-            >
-              <Input
-                value={setParameterName}
-                onChange={(e) => setSetParameterName(e.target.value)}
-                className="h-8 font-mono text-[0.85em]"
               />
             </Field>
 
@@ -597,6 +591,7 @@ export function DatastoreDialog({
                 )}
               </>
             )}
+
             <button
               type="button"
               onClick={() => setParamsOpen((v) => !v)}
@@ -623,11 +618,76 @@ export function DatastoreDialog({
             )}
           </TabsContent>
 
+          {sourceType === 'serialized' && (
+            <TabsContent value="dataflow" className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto py-1">
+              <SerializedDataFields
+                accessType={accessType}
+                onAccessTypeChange={setAccessType}
+                connectionOptions={connectionOptions}
+                connection={connection}
+                onConnectionChange={setConnection}
+                dataUrl={dataUrl}
+                onDataUrlChange={setDataUrl}
+                requestMethod={requestMethod}
+                onRequestMethodChange={setRequestMethod}
+                requestParams={requestParams}
+                onRequestParamsChange={setRequestParams}
+                requestBody={requestBody}
+                onRequestBodyChange={setRequestBody}
+                objectKey={objectKey}
+                onObjectKeyChange={setObjectKey}
+                objectUrl={objectUrl}
+                onObjectUrlChange={setObjectUrl}
+                filePath={filePath}
+                onFilePathChange={setFilePath}
+                fileExpression={fileExpression}
+                onFileExpressionChange={setFileExpression}
+                rendererType={rendererType}
+                rendererConfig={rendererConfig}
+                onRendererChange={(t, c) => {
+                  setRendererType(t)
+                  setRendererConfig(c)
+                }}
+                body={body}
+                onBodyChange={setBody}
+                bodyOpen={bodyOpen}
+                onBodyOpenChange={setBodyOpen}
+                sourceDatastore={sourceDatastore}
+                onSourceDatastoreChange={setSourceDatastore}
+                sourceDatastoreScope={sourceDatastoreScope}
+                onSourceDatastoreScopeChange={setSourceDatastoreScope}
+                availableDatastoreRefs={filteredDatastoreRefs}
+              />
+            </TabsContent>
+          )}
+
+          {!isLocal && (
+            <TabsContent value="permissions" className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto py-1">
+              <RoleMultiSelect
+                roles={roles}
+                value={displayedRoleIds}
+                onChange={setAllowedRoles}
+                disabled={rolesLocked}
+                listClassName="h-80"
+                helperText={
+                  rolesLocked
+                    ? `Inherited from connection "${effectiveConnection?.id}" -- edit its access roles to change this.`
+                    : undefined
+                }
+              />
+            </TabsContent>
+          )}
+
           <TabsContent value="preview" className="flex min-h-0 min-w-0 flex-1 flex-col">
             <DatastorePreviewPanel
               initialParams={Object.fromEntries(paramRows.map((r) => [r.variable, r.value]))}
               onRun={(params, limit) =>
-                api.post<DatastorePreviewResult>('/datastores/preview-config/', { ...buildPayload(), params, limit })
+                api.post<DatastorePreviewResult>('/datastores/preview-config/', {
+                  ...buildPayload(),
+                  params,
+                  limit,
+                  local_datastores: isLocal ? localDatastoresPayload(localSiblings) : undefined,
+                })
               }
               name={id}
             />

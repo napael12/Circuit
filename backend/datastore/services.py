@@ -157,13 +157,97 @@ def _fetch_serialized_file(ds: Datastore, params: dict) -> bytes | str:
         return f.read()
 
 
-def _fetch_serialized_raw(ds: Datastore, params: dict) -> str:
-    """The raw fetched content, decoded to text if bytes -- i.e. the serialized
-    source's own native json/xml/delimited document, before Renderer parses it
-    into rows. Split out from _fetch_serialized so "Set Parameter" (which wants
-    this exact text, see Datastore.set_parameter_name) and normal rendering
-    share one fetch instead of hitting the HTTP/S3/File source twice.
+def datastore_from_dict(d: dict) -> Datastore:
+    """A throwaway (unsaved) Datastore built from a plain dict of the same
+    field names the model itself uses -- the shape a panel's own scope=local
+    content.datastores entry (PanelDatastoreRef) and a client-posted
+    in-progress definition (DatastoreViewSet.preview_config's request body)
+    already share. Used wherever a definition needs to be run without (yet)
+    existing as a real row: panels.views.PanelViewSet.local_datastore (a
+    saved panel's own local datastores, and any local sibling one of them
+    chains to via access_type=datastore) and DatastoreViewSet.preview_config
+    (an in-progress, possibly-unsaved definition, and any sibling local
+    datastore passed alongside it for the same reason -- see its own
+    local_datastores request field).
     """
+    return Datastore(
+        source_type=d.get('source_type') or Datastore.SOURCE_QUERY,
+        access_type=d.get('access_type') or '',
+        connection_id=d.get('connection') or None,
+        sql_def_id=d.get('sql_def') or None,
+        inline_sql=d.get('inline_sql') or '',
+        row_limit=d.get('row_limit') or None,
+        object_key=d.get('object_key') or '',
+        object_url=d.get('object_url') or '',
+        body=d.get('body') or '',
+        data_url=d.get('data_url') or '',
+        request_method=d.get('request_method') or Datastore.METHOD_GET,
+        request_params=d.get('request_params') or {},
+        request_body=d.get('request_body') or '',
+        file_path=d.get('file_path') or '',
+        file_expression=d.get('file_expression') or '',
+        source_datastore=d.get('source_datastore') or '',
+        renderer_type=d.get('renderer_type') or Datastore.RENDERER_NONE,
+        renderer_config=d.get('renderer_config') or {},
+        default_params=d.get('default_params') or {},
+    )
+
+
+def get_datastore_raw_output(ds: Datastore, params: dict, local_datastores: dict[str, Datastore] | None = None) -> str:
+    """The *entire* output of `ds`, serialized into one string -- used as
+    another datastore's raw input when its own access_type=datastore (see
+    _fetch_serialized_raw below). source_type=query -> its rows, JSON-encoded
+    (matching pandas' own ``to_json(orient='records')``); source_type=
+    serialized -> its own raw fetched content, exactly as retrieved (its own
+    native json/xml/delimited text) -- recursing through _fetch_serialized_raw
+    so a chain of access_type=datastore sources resolves end to end.
+    `local_datastores` is threaded through unchanged, for that recursion.
+    """
+    merged_params = {**ds.default_params, **(params or {})}
+    if ds.source_type == Datastore.SOURCE_QUERY:
+        sql_text = substitute_vars(ds.sql_text(), merged_params)
+        rows = execute_query(ds.connection, sql_text, merged_params, ds.row_limit)
+        return json.dumps(rows, cls=DjangoJSONEncoder)
+    if ds.source_type == Datastore.SOURCE_SERIALIZED:
+        return _fetch_serialized_raw(ds, merged_params, local_datastores)
+    raise ValueError(f'Unknown source_type: {ds.source_type}')
+
+
+def _resolve_source_datastore(ds: Datastore, params: dict, local_datastores: dict[str, Datastore] | None) -> Datastore:
+    """access_type=datastore: resolves Datastore.source_datastore by name --
+    `local_datastores` (built by panels.views.local_datastore from a panel's
+    own saved local defs, keyed by name) is checked first, so a panel-
+    embedded datastore can reference a local sibling; everything else (every
+    other caller passes no local_datastores at all) falls back to the shared
+    Datastore table, which is the only thing a saved/global datastore can
+    ever mean here -- it has no panel to resolve a "local" name against.
+    """
+    name = substitute_vars(ds.source_datastore, params)
+    if not name:
+        raise ValueError('No source datastore configured.')
+    local = (local_datastores or {}).get(name)
+    if local is not None:
+        return local
+    try:
+        return Datastore.objects.get(pk=name)
+    except Datastore.DoesNotExist:
+        raise ValueError(f'Source datastore "{name}" not found.')
+
+
+def _fetch_serialized_raw(ds: Datastore, params: dict, local_datastores: dict[str, Datastore] | None = None) -> str:
+    """The raw content for a source_type=serialized datastore, decoded to
+    text if bytes -- its own native json/xml/delimited document, before
+    Renderer parses it into rows.
+
+    access_type=embedded returns the datastore's own stored `body` directly
+    (no fetch of any kind -- this IS the content, not an override of one).
+    Every other access_type can still have its real fetch short-circuited by
+    a non-blank `body` for ad hoc testing/troubleshooting
+    (specs/serialized-datastore.md).
+    """
+    if ds.access_type == Datastore.ACCESS_EMBEDDED:
+        return substitute_vars(ds.body, params) or ''
+
     override = substitute_vars(ds.body, params)
     if override:
         raw = override
@@ -173,17 +257,30 @@ def _fetch_serialized_raw(ds: Datastore, params: dict) -> str:
         raw = _fetch_serialized_s3(ds, params)
     elif ds.access_type == Datastore.ACCESS_FILE:
         raw = _fetch_serialized_file(ds, params)
+    elif ds.access_type == Datastore.ACCESS_DATASTORE:
+        source = _resolve_source_datastore(ds, params, local_datastores)
+        raw = get_datastore_raw_output(source, params, local_datastores)
     else:
         raise ValueError(f'Unknown access_type: {ds.access_type}')
     return raw.decode('utf-8') if isinstance(raw, (bytes, bytearray)) else raw
 
 
-def run_datastore(ds: Datastore, params: dict | None = None, row_limit: int | None = None, use_cache: bool = True):
-    """Returns ``(rows, set_parameter_value)`` -- see _run_uncached.
-
-    ``row_limit``, when given, overrides ``ds.row_limit`` for this call only
+def run_datastore(
+    ds: Datastore,
+    params: dict | None = None,
+    row_limit: int | None = None,
+    use_cache: bool = True,
+    local_datastores: dict[str, Datastore] | None = None,
+) -> list[dict]:
+    """``row_limit``, when given, overrides ``ds.row_limit`` for this call only
     -- used by the manager/editor "Preview" feature to cap results without
     touching the datastore's saved configuration.
+
+    ``local_datastores`` (name -> Datastore) is only ever passed by
+    panels.views.local_datastore, for access_type=datastore sources that
+    name a sibling local (panel-embedded) datastore instead of a saved one
+    -- see _resolve_source_datastore. Datastores built this way are never
+    cacheable (no ``ds.pk``), so it has no cache-key implications.
 
     When ``ds.cache_seconds`` is set, results are cached under datastore id +
     every input parameter (see datastore.cache). Previews (``row_limit``
@@ -195,40 +292,30 @@ def run_datastore(ds: Datastore, params: dict | None = None, row_limit: int | No
         cached = result_cache.get(ds.pk, merged_params)
         if not result_cache.is_miss(cached):
             return cached
-    result = _run_uncached(ds, merged_params, row_limit)
+    result = _run_uncached(ds, merged_params, row_limit, local_datastores)
     if cacheable:
         result_cache.put(ds.pk, merged_params, result, ds.cache_seconds)
     return result
 
 
-def _run_uncached(ds: Datastore, merged_params: dict, row_limit: int | None) -> tuple[list[dict], str | None]:
-    """Returns ``(rows, set_parameter_value)``. ``set_parameter_value`` is
-    None whenever ``ds.set_parameter_name`` is unset (the common case);
-    otherwise it's the *entire* fetch serialized into one string a parameter
-    can hold (see Datastore.set_parameter_name's doc comment):
-    source_type=query -> ``rows`` JSON-encoded; source_type=serialized ->
-    the raw fetched content exactly as retrieved, in its own native
-    json/xml/delimited text, *not* the rendered rows -- and not capped by
-    row_limit, which only ever applies to the rendered rows controls display.
-    """
+def _run_uncached(
+    ds: Datastore, merged_params: dict, row_limit: int | None, local_datastores: dict[str, Datastore] | None = None,
+) -> list[dict]:
     limit = ds.row_limit if row_limit is None else row_limit
-    wants_param = bool(ds.set_parameter_name)
 
     if ds.source_type == Datastore.SOURCE_QUERY:
         # ${name} is a literal text substitution (see breadboard.templating),
         # applied ahead of SQLAlchemy's own :name bound-parameter handling in
         # execute_query -- the two syntaxes can coexist in the same query.
         sql_text = substitute_vars(ds.sql_text(), merged_params)
-        result = execute_query(ds.connection, sql_text, merged_params, limit)
-        set_parameter_value = json.dumps(result, cls=DjangoJSONEncoder) if wants_param else None
-        return result, set_parameter_value
+        return execute_query(ds.connection, sql_text, merged_params, limit)
 
     if ds.source_type == Datastore.SOURCE_SERIALIZED:
-        raw = _fetch_serialized_raw(ds, merged_params)
+        raw = _fetch_serialized_raw(ds, merged_params, local_datastores)
         result = render_content(ds.renderer_type, raw, substitute_config(ds.renderer_config, merged_params))
         if limit is not None and isinstance(result, list):
             result = result[:limit]
-        return result, (raw if wants_param else None)
+        return result
 
     raise ValueError(f'Unknown source_type: {ds.source_type}')
 
@@ -250,10 +337,7 @@ def refresh_scheduled(ds_id: str) -> None:
     if activity.is_idle(ds.id, ds.idle_timeout_seconds):
         return
     try:
-        # set_parameter_value (the 2nd element) is only meaningful for an on-demand
-        # fetch reacting to a live viewer's own params -- a scheduled datastore runs
-        # on a fixed cron tick with no such viewer in the loop, so it's discarded here.
-        result, _ = run_datastore(ds, use_cache=False)
+        result = run_datastore(ds, use_cache=False)
     except Exception as exc:  # noqa: BLE001 - surface any failure on the record
         ds.last_error = str(exc)
         ds.save(update_fields=['last_error'])
