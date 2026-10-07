@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 
 import { createParameterStore, type ParameterStore } from '../../store/parameterStore'
 import type { PanelDatastoreRef, PanelNode, PanelParameter } from '../../api/types'
-import { resolveParameterDefault, visibleParameters } from '../../utils/panelParams'
+import { hasInlineParametersControl, headerParameters, resolveParameterDefault, visibleParameters } from '../../utils/panelParams'
 import { ParametersDialog } from './ParametersDialog'
 
 const ParameterStoreContext = createContext<ParameterStore | null>(null)
@@ -16,6 +16,17 @@ interface ParametersDialogContextValue {
   /** Parameters actually worth surfacing (excludes PanelParameter.hidden and hidden-column-linked ones) -- see visibleParameters. */
   parameters: PanelParameter[]
   show: () => void
+  /**
+   * Whether the viewer toolbar's own "Parameters" button should render at
+   * all -- false once the dashboard already surfaces its parameters without
+   * it: any parameter marked addToHeader, or any type='parameters' inline
+   * control anywhere in content (see headerParameters/
+   * hasInlineParametersControl). Each control's own right-click "Parameters"
+   * menu item (ControlContextMenu.tsx) is a separate, always-available path
+   * to the same dialog and deliberately ignores this -- it stays enabled
+   * purely off `parameters.length > 0`.
+   */
+  showHeaderButton: boolean
 }
 const ParametersDialogContext = createContext<ParametersDialogContextValue | null>(null)
 
@@ -46,9 +57,13 @@ export function ParameterProvider({
   )
   const [dialogOpen, setDialogOpen] = useState(false)
   const visible = useMemo(() => visibleParameters(parameters, content), [parameters, content])
+  const showHeaderButton = useMemo(
+    () => visible.length > 0 && headerParameters(parameters, content).length === 0 && !hasInlineParametersControl(content),
+    [visible, parameters, content],
+  )
   const dialogContext = useMemo<ParametersDialogContextValue>(
-    () => ({ parameters: visible, show: () => setDialogOpen(true) }),
-    [visible],
+    () => ({ parameters: visible, show: () => setDialogOpen(true), showHeaderButton }),
+    [visible, showHeaderButton],
   )
 
   return (
@@ -110,12 +125,16 @@ export function usePanelId(): string {
  * the viewer toolbar's "Parameters" button and each control's right-click
  * menu, so either one opens the exact same dialog instead of duplicating
  * the form. `hasParameters` lets a caller hide/disable its own trigger when
- * there's nothing to show (mirrors the toolbar button's existing behavior).
+ * there's nothing to show at all (mirrors the toolbar button's pre-existing
+ * behavior; ControlContextMenu.tsx's own menu item uses this, not
+ * `showHeaderButton`, so it stays available even once the toolbar button
+ * itself is hidden). `showHeaderButton` is specifically the toolbar button's
+ * own, stricter visibility -- see ParametersDialogContextValue.
  */
-export function useOpenParametersDialog(): { show: () => void; hasParameters: boolean } {
+export function useOpenParametersDialog(): { show: () => void; hasParameters: boolean; showHeaderButton: boolean } {
   const ctx = useContext(ParametersDialogContext)
   if (!ctx) throw new Error('useOpenParametersDialog must be used within a ParameterProvider')
-  return { show: ctx.show, hasParameters: ctx.parameters.length > 0 }
+  return { show: ctx.show, hasParameters: ctx.parameters.length > 0, showHeaderButton: ctx.showHeaderButton }
 }
 
 /** The same pre-filtered (non-hidden) list the Parameters dialog itself shows -- see ParametersControl.tsx, an inline always-visible alternative to that dialog. */

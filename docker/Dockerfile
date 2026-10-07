@@ -26,10 +26,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./
 COPY --from=frontend /app/backend/frontend_dist ./frontend_dist
 COPY docker/entrypoint.sh /entrypoint.sh
+COPY docker/examples.db /data/examples.db
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh \
     && mkdir -p /data/backups
 
-# The SQLite database and the Manager -> Backup folder live under /data (a volume).
+# The SQLite database, the Manager -> Backup folder, and the bundled sample
+# database (examples.db, seeded from samples/db) live under /data (a volume).
 ENV DJANGO_DB_PATH=/data/db.sqlite3 DJANGO_DEBUG=0
 VOLUME /data
 EXPOSE 8000

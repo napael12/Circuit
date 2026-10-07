@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { InfoPopover } from '@/components/InfoPopover'
+import { SearchableSelect } from '@/components/SearchableSelect'
 
 import type { FieldSchema } from './propertySchemas'
 
@@ -130,7 +131,24 @@ function FieldControl({
   }
 
   if (field.type === 'select') {
-    const options = field.dynamicOptions === 'datastores' ? datastoreOptions : (field.options ?? [])
+    // A panel's datastore list can get long enough that scanning a flat
+    // dropdown stops being comfortable -- searchable here specifically,
+    // rather than for every 'select' field, since a handful of fixed
+    // enum options (field.options) never needs it.
+    if (field.dynamicOptions === 'datastores') {
+      return (
+        <SearchableSelect
+          value={(value as string) || ''}
+          onValueChange={(v) => onChange(v || undefined)}
+          options={datastoreOptions.map((opt) => ({ value: opt, label: opt }))}
+          noneLabel={field.noneLabel ?? 'None'}
+          placeholder="Select datastore..."
+          emptyText="No datastores."
+          className="h-7 text-[0.82em]"
+        />
+      )
+    }
+    const options = field.options ?? []
     // Radix Select reserves the empty string for "no selection" internally,
     // so the clear option needs its own sentinel value -- translated back to
     // undefined on the way out. Without this, a select field could be set

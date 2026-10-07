@@ -1,17 +1,17 @@
-# Breadboard as a monosite (Django + built React frontend on one port) plus the
-# sample Postgres database from samples/db.
+# Breadboard as a monosite (Django + built React frontend on one port). A
+# sample SQLite database (examples.db, seeded from samples/db) ships inside
+# the image.
 #
 #   cd docker
 #   cp .env.example .env      # then edit the secrets
 #   docker compose up --build
 #
-# App:       http://localhost:${BREADBOARD_PORT:-8000}
-# Sample DB: from the app's containers use host "sample-db", port 5432
-#            (also published on the host at ${POSTGRES_PORT:-5432}).
+# App: http://localhost:${BREADBOARD_PORT:-8000}
 #
-# Data: the app's SQLite database and Manager -> Backup folder live in the
-# "breadboard-data" volume (/data); the sample DB in "sample-db-data".
-# `docker compose down` keeps both; `docker compose down -v` wipes them.
+# Data: the app's SQLite database, the Manager -> Backup folder, and the
+# bundled sample database (examples.db) live in the "breadboard-data" volume
+# (/data). `docker compose down` keeps it; `docker compose down -v` wipes it,
+# so examples.db is reseeded from the image (its current build) on next start.
 
 services:
   breadboard:
@@ -20,9 +20,6 @@ services:
       dockerfile: docker/Dockerfile
     image: breadboard
     restart: unless-stopped
-    depends_on:
-      sample-db:
-        condition: service_healthy
     ports:
       - "${BREADBOARD_PORT:-8000}:8000"
     environment:
@@ -35,30 +32,5 @@ services:
     volumes:
       - breadboard-data:/data
 
-  sample-db:
-    build:
-      context: ../samples/db
-      args:
-        SCHEMA_FOLDER: ${SAMPLE_SCHEMA:-samples}
-        POSTGRES_USER: ${POSTGRES_USER:-postgres}
-        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-        POSTGRES_DB: ${POSTGRES_DB:-example}
-    image: ${DOCKER_IMAGE_TAG:-sample-db}
-    restart: unless-stopped
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-example}
-    volumes:
-      - sample-db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-example}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
 volumes:
   breadboard-data:
-  sample-db-data:

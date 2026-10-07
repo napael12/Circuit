@@ -186,6 +186,10 @@ interface BuildColumnsOptions {
   signalMode?: SignalMode
   /** Per-column colorScale domain, from DatatableControl's own useMemo -- see colorScaleStyle. */
   colorScaleDomains?: ColorScaleDomains
+  /** PanelNode.colorScaleScheme -- which COLOR_SCALE_SCHEMES palette every color-scaled column in this table uses. */
+  colorScaleScheme?: string
+  /** PanelNode.headerStyle -- CSS text applied to every column header cell. */
+  headerStyle?: string
 }
 
 /** Resolves a changed cell's flash class for the datatable's configured signalMode -- 'neutral' (or a non-numeric change under any mode) is the original flat amber; the two directional modes swap which direction is green/red. 30% opacity per spec, vs. neutral's own 40%. */
@@ -202,16 +206,26 @@ export interface ColorScaleDomain {
   max: number
 }
 
-// Fixed palette (PanelNode.colorScale doesn't expose custom colors in v1) --
-// low/high match the red/green signalFlashClass's directional modes already
-// use (--color-destructive/--color-success), so a table mixing both features
-// reads consistently; mid is a neutral amber-ish middle, same spirit as the
-// flash's own 'neutral' color.
-const COLOR_SCALE_LOW: [number, number, number] = [220, 38, 38] // --destructive
-const COLOR_SCALE_MID: [number, number, number] = [234, 179, 8] // amber-500, matches --warning
-const COLOR_SCALE_HIGH: [number, number, number] = [16, 185, 129] // emerald-500, matches --success
+type RGB = [number, number, number]
 
-function lerpRgb(a: [number, number, number], b: [number, number, number], t: number): string {
+/**
+ * PanelNode.colorScaleScheme's named palettes -- 'red-green' is the
+ * original (pre-parameters3/datastore3) fixed one, kept as the default so
+ * an already-saved panel with colorScaleScheme unset reproduces its exact
+ * colors. low/high in 'red-green' match the red/green signalFlashClass's
+ * directional modes already use (--color-destructive/--color-success), so
+ * a table mixing both features reads consistently.
+ */
+const COLOR_SCALE_SCHEMES: Record<string, { low: RGB; mid: RGB; high: RGB }> = {
+  'red-green': { low: [220, 38, 38], mid: [234, 179, 8], high: [16, 185, 129] }, // destructive -> amber-500 -> emerald-500 (--color-success)
+  'green-red': { low: [16, 185, 129], mid: [234, 179, 8], high: [220, 38, 38] }, // same triple, inverted -- for a column where "high" is the bad end
+  'blue-red': { low: [37, 99, 235], mid: [228, 228, 231], high: [220, 38, 38] }, // blue-600 -> zinc-200 -> red-600, classic diverging
+  'purple-orange': { low: [124, 58, 237], mid: [228, 228, 231], high: [234, 88, 12] }, // violet-600 -> zinc-200 -> orange-600
+  grayscale: { low: [212, 212, 216], mid: [113, 113, 122], high: [39, 39, 42] }, // zinc-300 -> zinc-500 -> zinc-800
+}
+const DEFAULT_COLOR_SCALE_SCHEME = 'red-green'
+
+function lerpRgb(a: RGB, b: RGB, t: number): string {
   const r = Math.round(a[0] + (b[0] - a[0]) * t)
   const g = Math.round(a[1] + (b[1] - a[1]) * t)
   const bl = Math.round(a[2] + (b[2] - a[2]) * t)
@@ -242,15 +256,19 @@ export function isColorScaleEligibleDataType(dataType: PanelNode['dataType']): b
  * e.g. every loaded row has the same value, or there's only one row).
  * 'sequential' interpolates low->high across the whole domain; 'diverging'
  * interpolates low->mid over the bottom half and mid->high over the top
- * half.
+ * half. `schemeName` is PanelNode.colorScaleScheme (datatable-level, so the
+ * same for every column in the table) -- unset or not a known
+ * COLOR_SCALE_SCHEMES key both resolve to DEFAULT_COLOR_SCALE_SCHEME, so an
+ * already-saved panel with nothing set reproduces its original colors.
  */
-function colorScaleStyle(value: unknown, col: PanelNode, domain: ColorScaleDomain | undefined): CSSProperties | undefined {
+function colorScaleStyle(value: unknown, col: PanelNode, domain: ColorScaleDomain | undefined, schemeName: string | undefined): CSSProperties | undefined {
   if (!col.colorScale || col.colorScale === 'none' || !isColorScaleEligibleDataType(col.dataType) || !domain) return undefined
   const num = typeof value === 'number' ? value : parseFloat(String(value))
   if (!Number.isFinite(num) || domain.min === domain.max) return undefined
   const t = Math.min(1, Math.max(0, (num - domain.min) / (domain.max - domain.min)))
-  if (col.colorScale === 'sequential') return { backgroundColor: lerpRgb(COLOR_SCALE_LOW, COLOR_SCALE_HIGH, t) }
-  return { backgroundColor: t < 0.5 ? lerpRgb(COLOR_SCALE_LOW, COLOR_SCALE_MID, t * 2) : lerpRgb(COLOR_SCALE_MID, COLOR_SCALE_HIGH, (t - 0.5) * 2) }
+  const scheme = (schemeName && COLOR_SCALE_SCHEMES[schemeName]) || COLOR_SCALE_SCHEMES[DEFAULT_COLOR_SCALE_SCHEME]
+  if (col.colorScale === 'sequential') return { backgroundColor: lerpRgb(scheme.low, scheme.high, t) }
+  return { backgroundColor: t < 0.5 ? lerpRgb(scheme.low, scheme.mid, t * 2) : lerpRgb(scheme.mid, scheme.high, (t - 0.5) * 2) }
 }
 
 /** Column id -> its colorScale domain, from DatatableControl's own useMemo -- absent/no entry means that column isn't color-scaled (or has no domain to scale against yet). */
@@ -407,12 +425,22 @@ export function buildColumns<TData extends DatatableRow = DatatableRow>(
         // override Button's own hardcoded shrink-0/whitespace-nowrap/h-6
         // without touching the shared Button/DataGridColumnHeader files
         // (which every other grid in the app also renders through).
+        //
+        // text-[1em] on both: DataGridTableBase's own <table> already sets
+        // text-[0.85em] (so body <td>s, which set no font-size of their
+        // own, already render at that size via inheritance); Button/div's
+        // own text-[0.85em] is a SECOND 0.85em nested inside the first,
+        // compounding to ~0.72em -- visibly smaller than the body despite
+        // "looking like" the same 0.85em value. Resetting to 1em here
+        // makes the header inherit the table's 0.85em directly, undoing
+        // the accidental double-scaling so header and body text match.
         headerClassName:
           'h-auto py-2 align-top ' +
           '[&_*]:whitespace-normal [&_*]:break-words ' +
           '[&_button]:h-auto [&_button]:min-h-6 [&_button]:w-full [&_button]:shrink ' +
-          '[&_button]:justify-start [&_button]:text-left [&_button]:items-start ' +
-          '[&>div]:h-auto [&>div]:items-start',
+          '[&_button]:justify-start [&_button]:text-left [&_button]:items-start [&_button]:text-[1em] ' +
+          '[&>div]:h-auto [&>div]:items-start [&>div]:text-[1em]',
+        headerStyle: parseCssText(options?.headerStyle ?? ''),
       },
       cell: ({ row, getValue }) => {
         const value = getValue()
@@ -443,7 +471,7 @@ export function buildColumns<TData extends DatatableRow = DatatableRow>(
         // background class -- skip it for the instant a cell is actually
         // flashing so the flash still shows, reverting to the scale color
         // once diffChangedCells' timeout clears.
-        const scaleStyle = direction ? undefined : colorScaleStyle(value, col, options?.colorScaleDomains?.get(col.id))
+        const scaleStyle = direction ? undefined : colorScaleStyle(value, col, options?.colorScaleDomains?.get(col.id), options?.colorScaleScheme)
         const needsColorBox = signalEnabled || !!scaleStyle
         const colorBoxClass = needsColorBox
           ? `block w-full transition-colors duration-1000 ${direction ? signalFlashClass(direction, options?.signalMode ?? 'neutral') : ''}`

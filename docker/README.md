@@ -1,7 +1,8 @@
 # Docker deployment
 
 Breadboard runs as one container (Django + Daphne serving the API, websockets and the built React
-frontend) alongside the sample Postgres database from `../samples/db`.
+frontend). A sample SQLite database (`examples.db`, seeded from `../samples/db`) ships inside the
+image.
 
 ```
 cd docker
@@ -14,13 +15,13 @@ Open http://localhost:8000 and log in with `DJANGO_SUPERUSER_USERNAME` / `DJANGO
 
 | Service | Purpose | Data |
 |---|---|---|
-| `breadboard` | The app, port `BREADBOARD_PORT` (8000) | `breadboard-data` volume mounted at `/data`: `db.sqlite3` and `backups/` |
-| `sample-db` | Postgres 17 seeded from `samples/db/samples` | `sample-db-data` volume |
+| `breadboard` | The app, port `BREADBOARD_PORT` (8000) | `breadboard-data` volume mounted at `/data`: `db.sqlite3`, `backups/`, and `examples.db` |
 
-- **Sample DB connection:** create a `sql` connection in Manager with host `sample-db`, port `5432`,
-  and the `POSTGRES_*` credentials from `.env` (defaults `postgres` / `postgres`, database `example`).
-  The DB is also published on the host at `POSTGRES_PORT`; change it if 5432 is already in use.
-  The schema/data are loaded only when the volume is first created -- `docker compose down -v` to reseed.
+- **Sample DB connection:** create a `sql` connection in Manager with dialect `sqlite` and either
+  database path `/data/examples.db`, or URL `sqlite:////data/examples.db` (4 slashes -- it's an
+  absolute path). No host/port/credentials needed.
+  The file is copied into the volume only when the volume is first created -- `docker compose down -v`
+  to pick up a rebuilt image's copy of `examples.db`.
 - **Backups:** in Manager -> Backup set the path to `/data/backups` so backups land in the volume.
 - **Keys:** changing `BREADBOARD_CONNECTION_SECRET_KEY` after connections are saved makes their
   stored passwords unreadable.

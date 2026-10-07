@@ -2,9 +2,9 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Field } from '@/components/Field'
+import { SearchableSelect } from '@/components/SearchableSelect'
 
 import type { DataConnection, Datastore, PanelDatastoreRef } from '../../api/types'
 import { DatastoreDialog } from '../manager/DatastoreDialog'
@@ -115,18 +115,14 @@ export function DatastoreRefDialog({ initial, globalDatastoreIds, panelDatastore
         </Tabs>
 
         <Field label="Global datastore">
-          <Select value={globalName} onValueChange={setGlobalName}>
-            <SelectTrigger className="h-8 w-full text-[0.85em]">
-              <SelectValue placeholder="none" />
-            </SelectTrigger>
-            <SelectContent>
-              {globalDatastoreIds.map((id) => (
-                <SelectItem key={id} value={id}>
-                  {id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect
+            value={globalName}
+            onValueChange={setGlobalName}
+            options={globalDatastoreIds.map((id) => ({ value: id, label: id }))}
+            placeholder="Select datastore..."
+            emptyText="No datastores."
+            className="h-8 text-[0.85em]"
+          />
         </Field>
 
         <DialogFooter>

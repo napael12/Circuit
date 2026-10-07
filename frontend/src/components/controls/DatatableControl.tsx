@@ -11,7 +11,7 @@ import type { PanelNode } from '../../api/types'
 import { useDatastore } from '../../hooks/useDatastore'
 import { useTitleText } from '../../hooks/useTitleText'
 import { downloadCsv, rowsToCsv, sanitizeFilename } from '../../utils/csv'
-import { formatValue, getFieldValue } from '../../utils/panelFormat'
+import { formatValue, getFieldValue, parseCssText } from '../../utils/panelFormat'
 import { usePanelId, useSetParameter } from '../layout/ParameterContext'
 import { useReactiveDatastoreParams } from '../layout/useComponentParams'
 import { ControlContextMenu } from './ControlContextMenu'
@@ -209,6 +209,8 @@ export function DatatableControl({ component, datastores, previewMode }: Control
       changedCells,
       signalMode: signalMode || undefined,
       colorScaleDomains,
+      colorScaleScheme: component.colorScaleScheme,
+      headerStyle: component.headerStyle,
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -223,6 +225,8 @@ export function DatatableControl({ component, datastores, previewMode }: Control
     changedCells,
     signalMode,
     colorScaleDomains,
+    component.colorScaleScheme,
+    component.headerStyle,
   ])
 
   // A hidden column can still drive its `parameter` -- buildColumns leaves
@@ -289,6 +293,8 @@ export function DatatableControl({ component, datastores, previewMode }: Control
   })
 
   const hasTotalColumn = !transpose && !!component.footer && visibleColumns.some((c) => c.totalExpession)
+  // Position only -- doesn't gate whether totals render at all (hasTotalColumn above already does that).
+  const isSubheaderTotals = component.totalsPosition === 'subheader'
   // Filtered, not raw, so totals and the pagination record count both track
   // the table's own column-filter state (table.state.columnFilters) instead
   // of the full unfiltered fetch -- flatRows so a treeRows table's totals
@@ -300,6 +306,10 @@ export function DatatableControl({ component, datastores, previewMode }: Control
     .flatRows.map((r) => r.original as DatatableRow)
     .filter((r) => !(GROUP_ROW_KEY in r))
   const filteredRecordCount = table.getFilteredRowModel().rows.length
+  // Built once regardless of position -- isSubheaderTotals below just picks
+  // which of DataGridTable's two slots (a real <tfoot>, or a row inside
+  // <thead> right under the column headers) it's handed to, never both.
+  const totalsRow = hasTotalColumn ? <FooterRow columns={visibleColumns} rows={filteredRows} style={component.footerStyle} /> : null
 
   if (error) {
     return (
@@ -334,7 +344,7 @@ export function DatatableControl({ component, datastores, previewMode }: Control
       linkIds={component.linkIds}
     >
       <div className="relative flex h-full w-full flex-col overflow-hidden">
-        <DatastoreStatusBadge refreshMode={refreshMode} lastRunAt={lastRunAt} />
+        {component.showStatusBadge && <DatastoreStatusBadge refreshMode={refreshMode} lastRunAt={lastRunAt} />}
         <DataGrid
           table={table}
           recordCount={filteredRecordCount}
@@ -385,7 +395,8 @@ export function DatatableControl({ component, datastores, previewMode }: Control
                 container instead of ever overflowing/scrolling within it. */}
             <DataGridScrollArea orientation="both" className="h-full">
               <DataGridTable
-                footerContent={hasTotalColumn ? <FooterRow columns={visibleColumns} rows={filteredRows} /> : undefined}
+                footerContent={!isSubheaderTotals ? totalsRow : undefined}
+                subheaderContent={isSubheaderTotals ? totalsRow : undefined}
                 renderHeader={!component.hideHeader}
               />
             </DataGridScrollArea>
@@ -401,7 +412,9 @@ export function DatatableControl({ component, datastores, previewMode }: Control
   )
 }
 
-function FooterRow({ columns, rows }: { columns: PanelNode[]; rows: DatatableRow[] }) {
+/** Renders the totals row's cells -- the caller (DatatableControl) decides whether this lands in the table's real <tfoot> or as a subheader row right under the column headers (PanelNode.totalsPosition); the row's own look is identical either way. `style` is PanelNode.footerStyle, CSS text layered on top of each cell's existing alignStyle. */
+function FooterRow({ columns, rows, style }: { columns: PanelNode[]; rows: DatatableRow[]; style?: string }) {
+  const footerStyle = parseCssText(style ?? '')
   return (
     <DataGridTableFootRow>
       {columns.map((col) => {
@@ -409,7 +422,7 @@ function FooterRow({ columns, rows }: { columns: PanelNode[]; rows: DatatableRow
         const total = col.totalExpession ? computeTotal(rows, path, col.totalExpession) : null
         return (
           <DataGridTableFootRowCell key={col.id}>
-            <span style={alignStyle(col.align)}>{total !== null ? formatValue(total, col.dataType, col.dataFormat, col.humanReadable) : ''}</span>
+            <span style={{ ...alignStyle(col.align), ...footerStyle }}>{total !== null ? formatValue(total, col.dataType, col.dataFormat, col.humanReadable) : ''}</span>
           </DataGridTableFootRowCell>
         )
       })}

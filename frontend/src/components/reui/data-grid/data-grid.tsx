@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef } from "react"
-import type { ReactNode } from "react"
+import type { CSSProperties, ReactNode } from "react"
 import {
   columnFacetingFeature,
   columnFilteringFeature,
@@ -81,6 +81,8 @@ const filterFn_selectorMatch = constructFilterFn({
 export interface DataGridColumnMeta<TData> {
   headerTitle?: string
   headerClassName?: string
+  /** Inline style merged onto the <th> itself, alongside headerClassName -- for arbitrary consumer-authored CSS (e.g. datatableUtils.tsx's PanelNode.headerStyle) that a fixed class string can't express. */
+  headerStyle?: CSSProperties
   cellClassName?: string
   skeleton?: ReactNode
   expandedContent?: (row: TData) => ReactNode

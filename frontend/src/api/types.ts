@@ -358,6 +358,14 @@ export interface PanelParameter {
    * selectorColumn is still what a row click actually sets the parameter to.
    */
   selectorColumn?: string
+  /**
+   * selector-single/selector-multi only -- which column's value is shown to
+   * the user in place of selectorColumn's own value (e.g. {id:1,
+   * value:'test1'} with selectorColumn='id', displayColumn='value' shows
+   * "test1" but the parameter is still set/stored as "1"). Blank -- shows
+   * selectorColumn's own value, same as before this existed.
+   */
+  displayColumn?: string
   /** Also renders this parameter's own ParamField directly in the dashboard viewer's header toolbar (see PanelViewerPage.tsx), in addition to the Parameters dialog/parameters control. Applies immediately on change, same as the parameters control -- no separate "close"/Apply step. */
   addToHeader?: boolean
   /**
@@ -494,10 +502,15 @@ export interface PanelNode {
   /** Rows per page; undefined/0 means no pagination (renders the whole result, capped for safety -- see DatatableControl). */
   pagination?: number
   filter?: boolean
+  /** datatable only -- aggregates each column with a Total set (see each datatable-column's own totalExpession). totalsPosition below decides where that row renders. headerStyle/footerStyle (datatable-column / kpi-column section below) double as this table's own header-row/totals-row CSS. */
   footer?: boolean
+  /** datatable only, footer=true only -- 'subheader' renders the totals row directly under the column headers instead of at the bottom. Unset -- the default "Footer" (bottom) placement. */
+  totalsPosition?: 'subheader'
   stickyHeader?: boolean
   /** datatable only -- omits the column header row (and its filter/resize/pin/move affordances) from the rendered table entirely. */
   hideHeader?: boolean
+  /** datatable only -- shows the small "On demand"/"Scheduled · <last load>" corner badge. Unset/false -- hidden (the default). */
+  showStatusBadge?: boolean
   /** datatable only -- lets a column's header be dragged to resize it. Undefined/unset behaves as unchecked (not resizable). */
   resizableColumns?: boolean
   /** datatable only -- tighter row/cell padding. Undefined/unset behaves as checked (dense), matching this control's pre-existing always-on behavior. */
@@ -529,6 +542,8 @@ export interface PanelNode {
   treeParentField?: string
   /** datatable only -- field names (of this table's own columns) whose colorScale combine into one shared min/max range instead of each column scaling against just its own values -- e.g. several numeric columns meant to read on one comparable scale. A column not named here keeps scaling independently (the default); a named column still needs its own colorScale turned on to actually render colored. */
   colorScaleGroup?: string[]
+  /** datatable only -- the low/mid/high palette every color-scaled column in this table uses (see datatableUtils.tsx's COLOR_SCALE_SCHEMES). Unset/unknown -- 'red-green', today's original fixed colors. */
+  colorScaleScheme?: string
   chartType?: 'line' | 'bar' | 'pie'
   // --- pivot ---
   /** Extra "Grand Total" column per value pivot-column: each row's aggregate across every column-group. */
@@ -705,7 +720,7 @@ export interface PanelNode {
   // --- kpi-column ("Card") ---
   /** kpi-column: text shown in the card header (specs/kpi.md's smaller-font slot). Either an exact key of the kpi's current row (looked up and rendered as that value) or literal text with ${param} -- see resolveExpression in KpiControl.tsx. Defaults to the source field's display name when a card is generated from a sample. */
   headerValue?: string
-  /** kpi-column: CSS declarations ("color: gray; font-size: 12px") applied to the header, overriding its default style. Same field-or-${param} resolution as headerValue. */
+  /** kpi-column: CSS declarations ("color: gray; font-size: 12px") applied to the header, overriding its default style. Same field-or-${param} resolution as headerValue. Also reused, same shape, by datatable: CSS declarations applied to every column header cell (no ${param} resolution there -- see buildColumns in datatableUtils.tsx). */
   headerStyle?: string
   /** kpi-column: text shown in the card body (specs/kpi.md's bold/larger-font slot). Same field-or-${param} resolution as headerValue. Defaults to the source field's own name (i.e. looked up in the row) when a card is generated from a sample. */
   bodyValue?: string
@@ -713,7 +728,7 @@ export interface PanelNode {
   bodyStyle?: string
   /** kpi-column: text shown in the card footer (specs/kpi.md's smaller-font slot) -- blank (the default) omits the footer entirely rather than rendering an empty one. */
   footerValue?: string
-  /** kpi-column: CSS declarations applied to the footer, overriding its default style. */
+  /** kpi-column: CSS declarations applied to the footer, overriding its default style. Also reused, same shape, by datatable: CSS declarations applied to its totals row's cells (footer=true only), wherever totalsPosition renders it. */
   footerStyle?: string
 }
 

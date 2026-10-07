@@ -855,6 +855,7 @@ function DataGridTableHeadRowCell<TData extends object>({
           width: `calc(var(--header-${header.id}-size) * 1px)`,
         }),
         ...(dndStyle ? dndStyle : null),
+        ...header.column.columnDef.meta?.headerStyle,
       }}
       data-pinned={isPinned || undefined}
       data-outer-pinned-col={
@@ -1911,9 +1912,12 @@ function DataGridTableHeader<TData extends object>() {
 
 function DataGridTable<TData extends object>({
   footerContent,
+  subheaderContent,
   renderHeader = true,
 }: {
   footerContent?: ReactNode
+  /** One more row rendered inside <thead>, right after the column-header row(s) -- e.g. a totals row placed as a "subheader" instead of in the footer. Unlike footerContent (a real <tfoot>, which always renders at the bottom of the table regardless of source order), this genuinely sits directly under the headers, and scrolls/sticks with them under headerSticky. No-op (renders nothing) when renderHeader is false. */
+  subheaderContent?: ReactNode
   renderHeader?: boolean
 }) {
   const { table, props } = useDataGrid<TData>()
@@ -1988,6 +1992,7 @@ function DataGridTable<TData extends object>({
                 </DataGridTableHeadRow>
               )
             })}
+            {subheaderContent}
           </DataGridTableHead>
         )}
 

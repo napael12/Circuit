@@ -42,6 +42,12 @@ export function headerParameters(parameters: PanelParameter[], content: PanelNod
   return visibleParameters(parameters, content).filter((p) => p.addToHeader)
 }
 
+/** Whether any node under `roots` is a type='parameters' inline control (ParametersControl.tsx) -- walks the whole tree since one can nest anywhere (tabs/layouts), same as hiddenLinkedParameterNames. Used to hide the viewer toolbar's own "Parameters" button once a dashboard already surfaces its parameters this way (see ParameterContext.tsx). */
+export function hasInlineParametersControl(roots: PanelNode[]): boolean {
+  const visit = (node: PanelNode): boolean => node.type === 'parameters' || childrenOf(node).some(visit)
+  return roots.some(visit)
+}
+
 const DATE_EXPR_RE = /^today\s*(?:([+-])\s*(\d+)\s*(day|business day)s?)?$/i
 
 /**

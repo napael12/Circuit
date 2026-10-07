@@ -136,6 +136,7 @@ function CalendarField({ value, format: fmt, onChange }: { value: string; format
       <PopoverContent className="w-auto p-0" align="start">
         <Calendar
           mode="single"
+          captionLayout="dropdown"
           selected={parseFormatted(value, fmt)}
           onSelect={(date) => {
             onChange(date ? formatDate(date, fmt) : '')
@@ -165,6 +166,12 @@ function decodeMultiValues(raw: string, delimiter: string, enclosure: string): s
   return matches.length > 0 ? matches : raw.split(delimiter)
 }
 
+/** One row's own value/display pair for a selector-single/selector-multi options datastore -- see PanelParameter.selectorColumn/displayColumn. */
+interface SelectorOption {
+  value: string
+  label: string
+}
+
 /**
  * PanelParameter.inputType='selector-multi' -- the same searchable-combobox
  * pattern reui's own Select docs point to for multi-select (reui's actual
@@ -182,7 +189,7 @@ function SelectorMultiField({
   value,
   onChange,
 }: {
-  options: string[]
+  options: SelectorOption[]
   delimiter: string
   enclosure: string
   value: string
@@ -190,6 +197,7 @@ function SelectorMultiField({
 }) {
   const [open, setOpen] = useState(false)
   const selected = decodeMultiValues(value, delimiter, enclosure)
+  const labelFor = (v: string) => options.find((o) => o.value === v)?.label ?? v
   const toggle = (opt: string) =>
     onChange(encodeMultiValues(selected.includes(opt) ? selected.filter((v) => v !== opt) : [...selected, opt], delimiter, enclosure))
 
@@ -203,7 +211,7 @@ function SelectorMultiField({
             ) : (
               selected.map((opt) => (
                 <Badge key={opt} variant="secondary" className="gap-1 text-[0.8em]">
-                  <span className="max-w-32 truncate">{opt}</span>
+                  <span className="max-w-32 truncate">{labelFor(opt)}</span>
                   {/* span, not a nested <button> -- this already sits inside the trigger's own <button>. stopPropagation keeps the click from also toggling the popover via the trigger's own handler. */}
                   <span
                     role="button"
@@ -229,8 +237,13 @@ function SelectorMultiField({
             <CommandEmpty>No options.</CommandEmpty>
             <CommandGroup>
               {options.map((opt) => (
-                <CommandItem key={opt} value={opt} data-checked={selected.includes(opt)} onSelect={() => toggle(opt)}>
-                  {opt}
+                <CommandItem
+                  key={opt.value}
+                  value={`${opt.value} ${opt.label}`}
+                  data-checked={selected.includes(opt.value)}
+                  onSelect={() => toggle(opt.value)}
+                >
+                  {opt.label}
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -269,7 +282,21 @@ export function ParamField({
   const rows = Array.isArray(data) ? (data as Record<string, unknown>[]) : []
   const columns = Object.keys(rows[0] ?? {})
   const valueColumn = param.selectorColumn || columns[0]
-  const options = Array.from(new Set(rows.map((row) => String(row[valueColumn] ?? '')))).filter(Boolean)
+  // selector-single/selector-multi only -- displayColumn unset (including
+  // every legacy no-inputType parameter below, which has no UI to set it)
+  // makes label === value, same as before displayColumn existed.
+  const displayColumn = param.displayColumn || valueColumn
+  const options = (() => {
+    const seen = new Set<string>()
+    const result: SelectorOption[] = []
+    for (const row of rows) {
+      const v = String(row[valueColumn] ?? '')
+      if (!v || seen.has(v)) continue
+      seen.add(v)
+      result.push({ value: v, label: String(row[displayColumn] ?? '') || v })
+    }
+    return result
+  })()
 
   if (param.inputType === 'toggle') {
     const [onValue, offValue] = toggleValuePair(param)
@@ -304,8 +331,8 @@ export function ParamField({
         </SelectTrigger>
         <SelectContent>
           {options.map((opt) => (
-            <SelectItem key={opt} value={opt}>
-              {opt}
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
             </SelectItem>
           ))}
         </SelectContent>
@@ -333,8 +360,8 @@ export function ParamField({
       >
         <option value="" />
         {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
           </option>
         ))}
       </select>

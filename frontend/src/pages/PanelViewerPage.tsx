@@ -209,9 +209,10 @@ function BrandName() {
 }
 
 /** Opens the shared ParametersDialog (rendered by ParameterProvider); hidden when there's nothing to show, same as the old inline popover trigger. */
+/** Hidden once the dashboard already surfaces its parameters without it (addToHeader fields, or an inline 'parameters' content control) -- see ParameterContext.tsx's showHeaderButton. */
 function ParametersButton() {
-  const { show, hasParameters } = useOpenParametersDialog()
-  if (!hasParameters) return null
+  const { show, showHeaderButton } = useOpenParametersDialog()
+  if (!showHeaderButton) return null
   return (
     <Button variant="outline" size="sm" onClick={show}>
       Parameters

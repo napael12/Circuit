@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { Field } from '@/components/Field'
+import { SearchableSelect } from '@/components/SearchableSelect'
 import { cn } from '@/lib/utils'
 
 import type { Datastore, RendererType } from '../../api/types'
@@ -249,26 +250,26 @@ export function SerializedDataFields(props: Props) {
 
         {accessType === 'datastore' && (
           <Field label="Source datastore" helperText="Another datastore whose own full output becomes this one's raw content -- SQL sources convert to JSON, serialized sources pass their raw content through as-is.">
-            <Select
+            <SearchableSelect
               value={sourceDatastore ? `${sourceDatastoreScope}:${sourceDatastore}` : ''}
               onValueChange={(v) => {
+                if (!v) {
+                  onSourceDatastoreChange('')
+                  return
+                }
                 const i = v.indexOf(':')
                 onSourceDatastoreScopeChange(v.slice(0, i) as 'global' | 'local')
                 onSourceDatastoreChange(v.slice(i + 1))
               }}
-            >
-              <SelectTrigger className={cn(h, 'w-full')}>
-                <SelectValue placeholder="none" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableDatastoreRefs.map((opt) => (
-                  <SelectItem key={`${opt.scope}:${opt.name}`} value={`${opt.scope}:${opt.name}`}>
-                    {opt.name}
-                    {opt.scope === 'local' ? ' (local)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={availableDatastoreRefs.map((opt) => ({
+                value: `${opt.scope}:${opt.name}`,
+                label: opt.scope === 'local' ? `${opt.name} (local)` : opt.name,
+              }))}
+              noneLabel="None"
+              placeholder="Select datastore..."
+              emptyText="No datastores."
+              className={h}
+            />
           </Field>
         )}
 
