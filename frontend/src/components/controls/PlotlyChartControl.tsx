@@ -353,7 +353,7 @@ export function PlotlyChartControl({ component, datastores, previewMode }: Contr
       linkIds={component.linkIds}
     >
       <div className="relative h-full w-full p-2">
-        <DatastoreStatusBadge refreshMode={refreshMode} lastRunAt={lastRunAt} />
+        {component.showStatusBadge && <DatastoreStatusBadge refreshMode={refreshMode} lastRunAt={lastRunAt} />}
         {traceNodes.length === 0 ? (
           <div className="flex h-full items-center justify-center text-[0.85em] text-muted-foreground">
             Add a plotly-trace child to this chart in the component tree

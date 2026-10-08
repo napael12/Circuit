@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useTable, type ColumnDef } from '@tanstack/react-table'
-import { ClipboardPaste, Copy, Download, Eraser, MoreHorizontal, Pencil, Play, Plus, Trash2, Upload } from 'lucide-react'
+import { ClipboardPaste, Code, Copy, Download, Eraser, MoreHorizontal, Pencil, Play, Plus, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -29,6 +29,7 @@ import { uniqueName } from '../editor/panelTree'
 import { useManagerGridInitialState, usePersistManagerGridState } from '../../hooks/useManagerGridState'
 import { CloneDialog } from './CloneDialog'
 import { DatastoreDialog } from './DatastoreDialog'
+import { EditDatastoreJsonDialog } from './EditDatastoreJsonDialog'
 import { ManagerGrid, managerGridInitialState } from './ManagerGrid'
 import { ManagerSearchBox } from './ManagerSearchBox'
 
@@ -75,6 +76,7 @@ export function DatastoresPanel({ connections, roles }: Props) {
   // straight away, so a colliding id is a deliberate choice, not a silent
   // "-2" suffix (same pattern as EditorPage.tsx's own paste-datastore flow).
   const [pasteDraft, setPasteDraft] = useState<DatastoreClipboardEntry | null>(null)
+  const [jsonEditing, setJsonEditing] = useState<Datastore | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(() => {
@@ -260,6 +262,10 @@ export function DatastoresPanel({ connections, roles }: Props) {
                   <Copy />
                   Copy
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setJsonEditing(row.original)}>
+                  <Code />
+                  Edit JSON
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() =>
@@ -345,6 +351,9 @@ export function DatastoresPanel({ connections, roles }: Props) {
           onClone={confirmPasteDatastore}
           onClose={() => setPasteDraft(null)}
         />
+      )}
+      {jsonEditing && (
+        <EditDatastoreJsonDialog datastore={jsonEditing} onSaved={load} onClose={() => setJsonEditing(null)} />
       )}
     </div>
   )

@@ -52,18 +52,28 @@ function formatDate(value: unknown, pattern: string | undefined, includeTime: bo
   return includeTime ? date.toISOString().slice(0, 16).replace('T', ' ') : date.toISOString().slice(0, 10)
 }
 
-/** Applies a "0,000.00" style pattern: decimals = digits after '.', grouping = pattern contains ','. */
+/**
+ * Applies a "0,000.00" style pattern: decimals = digits after '.', grouping
+ * = pattern contains ','. A trailing '%' (Excel/numeral convention, e.g.
+ * "0.0%" or "0%") scales the raw value ×100 and appends '%' to the result
+ * -- so a raw 0.03 reads "3.0%" under "0.0%", or 0.15 reads "15%" under
+ * "0%". The '%' itself doesn't count toward the decimals/grouping read off
+ * the rest of the pattern.
+ */
 function formatNumber(value: unknown, pattern: string | undefined): string {
   const num = typeof value === 'number' ? value : parseFloat(String(value))
   if (Number.isNaN(num)) return value == null ? '' : String(value)
   if (!pattern) return String(num)
-  const dotIndex = pattern.indexOf('.')
-  const decimals = dotIndex === -1 ? 0 : pattern.length - dotIndex - 1
-  return new Intl.NumberFormat(undefined, {
+  const isPercent = pattern.includes('%')
+  const corePattern = isPercent ? pattern.replace('%', '') : pattern
+  const dotIndex = corePattern.indexOf('.')
+  const decimals = dotIndex === -1 ? 0 : corePattern.length - dotIndex - 1
+  const formatted = new Intl.NumberFormat(undefined, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-    useGrouping: pattern.includes(','),
-  }).format(num)
+    useGrouping: corePattern.includes(','),
+  }).format(isPercent ? num * 100 : num)
+  return isPercent ? `${formatted}%` : formatted
 }
 
 /** "Human Readable": scales by the largest of thousand/million/billion the value clears, rounded to 1 decimal (trailing ".0" drops naturally on number->string) -- 1234 -> "1.2k", 2500000000 -> "2.5b". Takes precedence over dataFormat's pattern when both are set (see formatValue). */

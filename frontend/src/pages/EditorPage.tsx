@@ -44,6 +44,7 @@ import { ComponentTree } from '../components/editor/ComponentTree'
 import { DatastoreRefDialog } from '../components/editor/DatastoreRefDialog'
 import { DesignModeLayout } from '../components/editor/DesignModeLayout'
 import { EditComponentJsonDialog } from '../components/editor/EditComponentJsonDialog'
+import { EditDatastoreJsonDialog } from '../components/editor/EditDatastoreJsonDialog'
 import { EditParameterJsonDialog } from '../components/editor/EditParameterJsonDialog'
 import { ParameterTypeConfigDialog } from '../components/editor/ParameterTypeConfigDialog'
 import { buildColumnsFromSample } from '../components/editor/loadColumns'
@@ -664,6 +665,9 @@ export function EditorPage() {
   const applyParameterJson = (paramName: string, next: PanelParameter) => {
     setContent((c) => ({ ...c, parameters: c.parameters.map((p) => (p.name === paramName ? next : p)) }))
   }
+  const applyDatastoreJson = (dsId: string, next: PanelDatastoreRef) => {
+    setContent((c) => ({ ...c, datastores: c.datastores.map((d) => (d.id === dsId ? next : d)) }))
+  }
 
   // --- Load columns (datatable/chart): populate columns from a 1-2 row datastore sample ---
   const [loadColumnsPrompt, setLoadColumnsPrompt] = useState<{ nodeId: string; columns: PanelNode[] } | null>(null)
@@ -999,7 +1003,14 @@ export function EditorPage() {
           onClose={() => setViewJsonParamName(null)}
         />
       )}
-      {viewJsonDatastore && (
+      {viewJsonDatastore && viewJsonDatastore.scope === 'local' && (
+        <EditDatastoreJsonDialog
+          datastore={viewJsonDatastore}
+          onApply={(next) => applyDatastoreJson(viewJsonDatastore.id, next)}
+          onClose={() => setViewJsonDatastoreId(null)}
+        />
+      )}
+      {viewJsonDatastore && viewJsonDatastore.scope === 'global' && (
         <ViewSourceDialog
           title={`${viewJsonDatastore.name} (${viewJsonDatastore.scope})`}
           value={viewJsonDatastore}

@@ -258,7 +258,7 @@ export function PivotControl({ component, datastores, previewMode }: ControlProp
       linkIds={component.linkIds}
     >
       <div className="relative flex h-full w-full flex-col overflow-hidden">
-        <DatastoreStatusBadge refreshMode={refreshMode} lastRunAt={lastRunAt} />
+        {component.showStatusBadge && <DatastoreStatusBadge refreshMode={refreshMode} lastRunAt={lastRunAt} />}
         <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border">
           {loading && rows.length === 0 ? (
             <div className="flex h-full items-center justify-center p-6">

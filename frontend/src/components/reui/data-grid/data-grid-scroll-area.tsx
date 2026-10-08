@@ -19,8 +19,16 @@ const INITIAL_METRICS = {
   trackHeight: 0,
 } as const
 
+// z-50: both scrollbars are bottom/end-anchored overlays, the same place a
+// sticky header/footer row (data-grid.tsx's headerSticky/footerSticky,
+// z-40 -- see its own comment for the full z-index ladder: pinned body
+// cells 30 < sticky header/footer 40) pins itself, and that row's near-
+// opaque background was fully covering the horizontal scrollbar whenever a
+// datatable had both a footer and enough columns to need one. z-50 matches
+// the column-resize indicator's own precedent (data-grid-table.tsx) for
+// "must stay visible/usable above sticky header/footer".
 const SCROLLBAR_CLASSNAME =
-  "flex touch-none p-px transition-colors select-none data-[orientation=horizontal]:h-2.5 data-[orientation=horizontal]:flex-col data-[orientation=horizontal]:border-t data-[orientation=horizontal]:border-t-transparent data-[orientation=vertical]:h-full data-[orientation=vertical]:w-2 data-[orientation=vertical]:border-s data-[orientation=vertical]:border-s-transparent"
+  "flex touch-none p-px transition-colors select-none z-50 data-[orientation=horizontal]:h-2.5 data-[orientation=horizontal]:flex-col data-[orientation=horizontal]:border-t data-[orientation=horizontal]:border-t-transparent data-[orientation=vertical]:h-full data-[orientation=vertical]:w-2 data-[orientation=vertical]:border-s data-[orientation=vertical]:border-s-transparent"
 
 const SCROLLBAR_THUMB_CLASSNAME = "bg-border rounded-full relative flex-1"
 
@@ -487,7 +495,13 @@ function DataGridScrollArea({
         <div
           ref={setOverlayRef}
           aria-hidden="true"
-          className="pointer-events-none absolute inset-e-0 top-(--data-grid-scrollbar-header-height) z-20 h-(--data-grid-scrollbar-track-height)"
+          // z-50: see SCROLLBAR_CLASSNAME's comment above -- trackHeight only
+          // excludes the horizontal scrollbar's own size, not a sticky
+          // footer's, so with headerSticky + a footer both on, this overlay's
+          // lower portion sits under the same sticky tfoot (z-40) the native
+          // horizontal scrollbar did. z-20 was already below that; raised to
+          // match for the same reason.
+          className="pointer-events-none absolute inset-e-0 top-(--data-grid-scrollbar-header-height) z-50 h-(--data-grid-scrollbar-track-height)"
         >
           <div
             className="pointer-events-auto relative h-full w-2 touch-none p-px"

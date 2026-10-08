@@ -145,7 +145,7 @@ export function KpiControl({ component, datastores, previewMode }: ControlProps)
       linkIds={component.linkIds}
     >
       <div className="relative flex h-full w-full flex-wrap gap-3 overflow-auto p-2">
-        <DatastoreStatusBadge refreshMode={refreshMode} lastRunAt={lastRunAt} />
+        {component.showStatusBadge && <DatastoreStatusBadge refreshMode={refreshMode} lastRunAt={lastRunAt} />}
         {cards.length === 0 ? (
           <div className="flex h-full w-full items-center justify-center text-[0.85em] text-muted-foreground">
             Generate cards from the assigned datastore or from pasted JSON

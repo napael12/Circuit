@@ -141,6 +141,7 @@ export function ComponentTree({
             onCopy={d.scope === 'local' ? () => onCopyDatastore(d.id) : undefined}
             onPaste={onPasteDatastore}
             onViewJson={() => onViewJsonDatastore(d.id)}
+            viewJsonLabel={d.scope === 'local' ? 'Edit JSON' : 'View JSON'}
           />
         ))}
         {datastores.length === 0 && <Empty />}

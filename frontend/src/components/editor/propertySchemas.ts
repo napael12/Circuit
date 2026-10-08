@@ -26,6 +26,13 @@ const WEIGHT: FieldSchema = {
   help: "Flex weight among siblings, or a fixed size (weight × ~320px) when the parent layout's Scrollable is on",
 }
 const DATA_BOUND: FieldSchema = { key: 'datastore', label: 'Datastore', type: 'select', dynamicOptions: 'datastores' }
+/** datatable/chart/plotly-chart/kpi/pivot only -- DatastoreStatusBadge. Unset/false -- hidden (the default for all of these). */
+const SHOW_STATUS_BADGE: FieldSchema = {
+  key: 'showStatusBadge',
+  label: 'Show Status Badge',
+  type: 'checkbox',
+  help: 'Shows the small "On demand" / "Scheduled · <last load>" badge in the corner. Off by default',
+}
 /** datatable/chart/pivot/plotly-chart/html/kpi/parameters only -- layout has its own equivalent, positive-sense `displayTitle`. */
 const HIDE_TITLE: FieldSchema = { key: 'hideTitle', label: 'Hide Title', type: 'checkbox' }
 /** Shared by layout (row/column of its children) and parameters (row/column of its own field list). */
@@ -72,7 +79,7 @@ const DATATABLE: FieldSchema[] = [
   { key: 'stickyHeader', label: 'Sticky header', type: 'checkbox' },
   { key: 'hideHeader', label: 'Hide header', type: 'checkbox', help: 'Also hides column filters and the resize/pin/move column menu, since those live in the header' },
   { key: 'headerStyle', label: 'Header Style', type: 'text', help: 'CSS declarations applied to every column header cell, e.g. "background: #f5f5f5; font-weight: bold"' },
-  { key: 'showStatusBadge', label: 'Show Status Badge', type: 'checkbox', help: 'Shows the small "On demand" / "Scheduled · <last load>" badge in the corner. Off by default' },
+  SHOW_STATUS_BADGE,
   { key: 'resizableColumns', label: 'Resizable columns', type: 'checkbox' },
   { key: 'denseLayout', label: 'Dense layout', type: 'checkbox', defaultChecked: true },
   { key: 'stripedRows', label: 'Striped rows', type: 'checkbox' },
@@ -119,7 +126,7 @@ const DATATABLE_COLUMN: FieldSchema[] = [
   { key: 'fieldDisplay', label: 'Display name', type: 'text' },
   { key: 'hidden', label: 'Hidden', type: 'checkbox', help: 'Excludes this column from the rendered table' },
   { key: 'dataType', label: 'Data type', type: 'select', options: ['str', 'number', 'datetime', 'date', 'badge'] },
-  { key: 'dataFormat', label: 'Format', type: 'text', help: '"0,000.00" for numbers; "yyyy-MM-dd" / "yyyyMMdd HH:mm" for dates' },
+  { key: 'dataFormat', label: 'Format', type: 'text', help: '"0,000.00" for numbers, "0.0%"/"0%" for percentages (×100, e.g. raw 0.03 -> "3.0%"); "yyyy-MM-dd" / "yyyyMMdd HH:mm" for dates' },
   { key: 'humanReadable', label: 'Human Readable', type: 'checkbox', help: 'Data type=number only -- abbreviates as k/m/b (1234 -> 1.2k), overriding Format' },
   {
     key: 'colorScale',
@@ -167,6 +174,7 @@ const CHART: FieldSchema[] = [
   HIDE_TITLE,
   DATA_BOUND,
   { key: 'chartType', label: 'Chart type', type: 'select', options: ['line', 'bar', 'pie'] },
+  SHOW_STATUS_BADGE,
   { key: 'drilldownIds', label: 'Drilldowns', type: 'multiselect', dynamicOptions: 'drilldowns', help: 'Adds each to this control\'s right-click menu' },
   { key: 'linkIds', label: 'Links', type: 'multiselect', dynamicOptions: 'links', help: 'Adds each to this control\'s right-click menu' },
 ]
@@ -175,7 +183,7 @@ const CHART_COLUMN: FieldSchema[] = [
   { key: 'field', label: 'Field', type: 'text' },
   { key: 'fieldDisplay', label: 'Display name', type: 'text' },
   { key: 'dataType', label: 'Data type', type: 'select', options: ['str', 'number', 'date'] },
-  { key: 'dataFormat', label: 'Format', type: 'text' },
+  { key: 'dataFormat', label: 'Format', type: 'text', help: '"0,000.00" for numbers, "0.0%"/"0%" for percentages (×100, e.g. raw 0.03 -> "3.0%"); "yyyy-MM-dd" / "yyyyMMdd HH:mm" for dates' },
   { key: 'humanReadable', label: 'Human Readable', type: 'checkbox', help: 'Data type=number only -- abbreviates as k/m/b (1234 -> 1.2k), overriding Format' },
 ]
 
@@ -192,6 +200,7 @@ const PLOTLY_CHART: FieldSchema[] = [
       'Declarative JSON merged into Plotly layout/traces -- { "layout": {...}, "traces": [{...}] } (no code execution). ' +
       'layout may reference ${param} (e.g. a dynamic title); unknown ${name} is left as-is',
   },
+  SHOW_STATUS_BADGE,
   { key: 'drilldownIds', label: 'Drilldowns', type: 'multiselect', dynamicOptions: 'drilldowns', help: 'Adds each to this control\'s right-click menu' },
   { key: 'linkIds', label: 'Links', type: 'multiselect', dynamicOptions: 'links', help: 'Adds each to this control\'s right-click menu' },
 ]
@@ -249,6 +258,7 @@ const KPI: FieldSchema[] = [
   WEIGHT,
   HIDE_TITLE,
   DATA_BOUND,
+  SHOW_STATUS_BADGE,
   { key: 'drilldownIds', label: 'Drilldowns', type: 'multiselect', dynamicOptions: 'drilldowns', help: 'Adds each to this control\'s right-click menu' },
   { key: 'linkIds', label: 'Links', type: 'multiselect', dynamicOptions: 'links', help: 'Adds each to this control\'s right-click menu' },
 ]
@@ -257,7 +267,7 @@ const KPI_COLUMN: FieldSchema[] = [
   { key: 'field', label: 'Field', type: 'text', help: 'Datastore column this card is based on -- also the default Body value lookup key' },
   { key: 'fieldDisplay', label: 'Display name', type: 'text' },
   { key: 'dataType', label: 'Data type', type: 'select', options: ['str', 'number', 'datetime', 'date'], help: 'Applied to the Body value' },
-  { key: 'dataFormat', label: 'Format', type: 'text', help: '"0,000.00" for numbers; "yyyy-MM-dd" / "yyyyMMdd HH:mm" for dates' },
+  { key: 'dataFormat', label: 'Format', type: 'text', help: '"0,000.00" for numbers, "0.0%"/"0%" for percentages (×100, e.g. raw 0.03 -> "3.0%"); "yyyy-MM-dd" / "yyyyMMdd HH:mm" for dates' },
   { key: 'humanReadable', label: 'Human Readable', type: 'checkbox', help: 'Data type=number only -- abbreviates as k/m/b (1234 -> 1.2k), overriding Format' },
   { key: 'headerValue', label: 'Header value', type: 'text', help: 'An exact datastore field name (looked up in the current row), or literal text with ${param}' },
   { key: 'headerStyle', label: 'Header style', type: 'text', help: 'CSS declarations, e.g. "color: gray; font-size: 12px" -- overrides the default header style. Same field-or-${param} resolution as Header value' },
@@ -291,6 +301,7 @@ const PIVOT: FieldSchema[] = [
   DATA_BOUND,
   { key: 'rowTotals', label: 'Row grand total', type: 'checkbox', help: 'Adds a Grand Total column per value field, aggregating each row across every column' },
   { key: 'columnTotals', label: 'Column grand total', type: 'checkbox', help: 'Adds a Grand Total row, aggregating each column across every row' },
+  SHOW_STATUS_BADGE,
   { key: 'drilldownIds', label: 'Drilldowns', type: 'multiselect', dynamicOptions: 'drilldowns', help: 'Adds each to this control\'s right-click menu' },
   { key: 'linkIds', label: 'Links', type: 'multiselect', dynamicOptions: 'links', help: 'Adds each to this control\'s right-click menu' },
 ]
@@ -307,7 +318,7 @@ const PIVOT_COLUMN: FieldSchema[] = [
   },
   { key: 'aggrFunction', label: 'Aggregate function', type: 'select', options: ['sum', 'avg', 'min', 'max', 'count'], help: 'role=value only' },
   { key: 'dataType', label: 'Data type', type: 'select', options: ['str', 'number', 'datetime', 'date'] },
-  { key: 'dataFormat', label: 'Format', type: 'text', help: '"0,000.00" for numbers; "yyyy-MM-dd" / "yyyyMMdd HH:mm" for dates' },
+  { key: 'dataFormat', label: 'Format', type: 'text', help: '"0,000.00" for numbers, "0.0%"/"0%" for percentages (×100, e.g. raw 0.03 -> "3.0%"); "yyyy-MM-dd" / "yyyyMMdd HH:mm" for dates' },
   { key: 'humanReadable', label: 'Human Readable', type: 'checkbox', help: 'Data type=number only -- abbreviates as k/m/b (1234 -> 1.2k), overriding Format' },
   { key: 'sort', label: 'Sort', type: 'select', options: ['none', 'asc', 'desc'], help: 'role=index/column only' },
   {

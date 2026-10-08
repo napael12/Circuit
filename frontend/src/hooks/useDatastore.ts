@@ -46,6 +46,57 @@ function pickParams(params: Record<string, string>, names: string[]): Record<str
 }
 
 /**
+ * ${name}/:name parameters that actually affect `entry`'s own result -- its
+ * own text fields (see discoverAllParams) plus, when its own
+ * access_type='datastore' chains to another datastore, that source's own
+ * params too (recursively): a parameter that only appears in the upstream
+ * source's query/config still has to trigger a refetch of anything reading
+ * through the chain (same reasoning as backend
+ * datastore.models.Datastore.discover_param_names's own recursion, which
+ * this mirrors for a panel-local entry). scope='local' sources resolve
+ * against `panelDatastores` directly (no request needed, and recurse
+ * further here too); scope='global' ones hit the same recursively-complete
+ * GET /datastores/{id}/params/ useGlobalDatastore already calls below, so
+ * only one request no matter how deep that side of the chain goes.
+ * `visited` (by name) guards a circular source_datastore chain.
+ */
+async function resolveLocalParamNames(
+  entry: PanelDatastoreRef,
+  panelDatastores: PanelDatastoreRef[],
+  visited: Set<string> = new Set(),
+): Promise<string[]> {
+  const names = new Set(
+    discoverAllParams(
+      entry.inline_sql, entry.object_key, entry.object_url, entry.body, entry.data_url,
+      entry.request_body, entry.file_path, entry.file_expression,
+      entry.request_params ? JSON.stringify(entry.request_params) : undefined,
+      entry.renderer_config ? JSON.stringify(entry.renderer_config) : undefined,
+    ),
+  )
+
+  if (entry.access_type === 'datastore' && entry.source_datastore && !visited.has(entry.name)) {
+    const nextVisited = new Set(visited).add(entry.name)
+    if (entry.source_datastore_scope === 'local') {
+      const sibling = panelDatastores.find((d) => d.scope === 'local' && d.name === entry.source_datastore)
+      if (sibling) {
+        const upstream = await resolveLocalParamNames(sibling, panelDatastores, nextVisited)
+        upstream.forEach((n) => names.add(n))
+      }
+    } else {
+      try {
+        const upstream = await api.get<string[]>(`/datastores/${entry.source_datastore}/params/`)
+        upstream.forEach((n) => names.add(n))
+      } catch {
+        // Unresolvable (deleted/renamed source, network hiccup) -- just
+        // means less narrowing for this control, not a hard failure.
+      }
+    }
+  }
+
+  return Array.from(names)
+}
+
+/**
  * Fetches data for one panel control from its Datastore, resolving
  * `datastoreRef` (a PanelNode.datastore value) against this panel's own
  * `content.datastores` list by `name`.
@@ -111,15 +162,30 @@ function useLocalDatastore(
   const [data, setData] = useState<unknown>(undefined)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // null until resolved (see below) -- every current param is used
+  // meanwhile, same pattern useGlobalDatastore's own relevantParamNames
+  // already follows for its first fetch.
+  const [relevantParamNames, setRelevantParamNames] = useState<string[] | null>(null)
 
-  const relevantParamNames = entry
-    ? discoverAllParams(
-        entry.inline_sql, entry.object_key, entry.object_url, entry.body, entry.data_url,
-        entry.request_body, entry.file_path, entry.file_expression,
-        entry.request_params ? JSON.stringify(entry.request_params) : undefined,
-        entry.renderer_config ? JSON.stringify(entry.renderer_config) : undefined,
-      )
-    : null
+  useEffect(() => {
+    if (!entry) {
+      setRelevantParamNames(null)
+      return
+    }
+    let cancelled = false
+    resolveLocalParamNames(entry, panelDatastores).then((names) => {
+      if (!cancelled) setRelevantParamNames(names)
+    })
+    return () => {
+      cancelled = true
+    }
+    // entry?.id (not entry itself) -- a new object identity for the same
+    // datastore (e.g. content.datastores rebuilt elsewhere) shouldn't
+    // re-resolve on its own; panelDatastores already covers an actual
+    // definition/chain edit (see the other effect's own comment below).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry?.id, panelDatastores])
+
   const relevantParams = relevantParamNames ? pickParams(params, relevantParamNames) : params
   const paramsKey = JSON.stringify(relevantParams)
 

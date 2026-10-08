@@ -112,7 +112,7 @@ export function ChartControl({ component, datastores, previewMode }: ControlProp
       linkIds={component.linkIds}
     >
       <div className="relative h-full w-full p-2">
-        <DatastoreStatusBadge refreshMode={refreshMode} lastRunAt={lastRunAt} />
+        {component.showStatusBadge && <DatastoreStatusBadge refreshMode={refreshMode} lastRunAt={lastRunAt} />}
         <ResponsiveContainer width="100%" height="100%">
           {chartType === 'line' ? (
             <LineChart data={chartData}>

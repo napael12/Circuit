@@ -509,7 +509,7 @@ export interface PanelNode {
   stickyHeader?: boolean
   /** datatable only -- omits the column header row (and its filter/resize/pin/move affordances) from the rendered table entirely. */
   hideHeader?: boolean
-  /** datatable only -- shows the small "On demand"/"Scheduled · <last load>" corner badge. Unset/false -- hidden (the default). */
+  /** datatable/chart/plotly-chart/kpi/pivot -- shows the small "On demand"/"Scheduled · <last load>" corner badge (DatastoreStatusBadge). Unset/false -- hidden (the default, for every one of these control types). */
   showStatusBadge?: boolean
   /** datatable only -- lets a column's header be dragged to resize it. Undefined/unset behaves as unchecked (not resizable). */
   resizableColumns?: boolean
