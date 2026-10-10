@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronRight, Cloud, Database, KeyRound, Network } from 'lucide-react'
+import { ChevronRight, Cloud, Database, KeyRound, Network, Snowflake } from 'lucide-react'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -29,12 +29,14 @@ interface Props {
 
 const TYPE_OPTIONS: { value: ConnType; label: string }[] = [
   { value: 'sql', label: 'SQL database' },
+  { value: 'snowflake', label: 'Snowflake' },
   { value: 's3', label: 'S3 bucket' },
   { value: 'http', label: 'HTTP' },
 ]
 
 export const CONNECTION_TYPE_ICONS: Record<ConnType, typeof Database> = {
   sql: Database,
+  snowflake: Snowflake,
   s3: Cloud,
   http: KeyRound,
 }
@@ -76,6 +78,16 @@ function toKeyValueLines(obj: Record<string, unknown> | undefined): string {
     .join('\n')
 }
 
+// Mirrors backend connections.serializers._TEMPLATE_VAR_RE: a ${name}/
+// ${env.name}/${s3.bucket} reference isn't itself a secret (the real value
+// lives in Settings or the OS environment, never in this field), so a
+// secret-shaped input below renders it as plain text instead of masking it
+// -- same reasoning the serializer already uses to not redact it on read.
+const TEMPLATE_VAR_RE = /\$\{[\w.]+\}/
+const isTemplateValue = (value: string) => TEMPLATE_VAR_RE.test(value)
+/** type="password" unless the current value is a ${...} reference, which is safe (and more useful) to show in cleartext. */
+const secretInputType = (value: string) => (isTemplateValue(value) ? 'text' : 'password')
+
 const inputCls = 'h-8 text-[0.85em]'
 const selectTriggerCls = 'h-8 w-full text-[0.85em]'
 
@@ -108,13 +120,19 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
 
   // --- shared SQL credentials ---
   const [username, setUsername] = useState(initial?.username ?? '')
-  const [password, setPassword] = useState('')
+  // password (and every other secret-shaped field below) is normally absent/
+  // blanked by the API (write-only / redacted -- see DataConnectionSerializer),
+  // *except* when the saved value is a ${...} reference (a Setting or
+  // ${env.NAME}) rather than a literal secret -- that isn't sensitive on its
+  // own (the real value never left Settings/the OS environment), so the
+  // backend echoes it back and this pre-fills it instead of showing blank.
+  const [password, setPassword] = useState(initial?.password ?? '')
 
   // --- S3 ---
   // access_key isn't secret-shaped (see SECRET_CONFIG_KEYS in the serializer), so
   // unlike secret_key it comes back from the API and can be pre-filled directly.
   const [accessKey, setAccessKey] = useState((initial?.config?.access_key as string | undefined) ?? '')
-  const [secretKey, setSecretKey] = useState('')
+  const [secretKey, setSecretKey] = useState((initial?.config?.secret_key as string | undefined) ?? '')
   const [region, setRegion] = useState((initial?.config?.region as string | undefined) ?? '')
   const [bucket, setBucket] = useState((initial?.config?.bucket as string | undefined) ?? '')
 
@@ -122,15 +140,15 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
   const [authUrl, setAuthUrl] = useState(initial?.type === 'http' ? (initial?.url ?? '') : '')
   const [authType, setAuthType] = useState((initial?.config?.auth_type as string | undefined) ?? 'none')
   const [apiKeyName, setApiKeyName] = useState((initial?.config?.api_key_name as string | undefined) ?? 'X-API-Key')
-  const [apiKeyValue, setApiKeyValue] = useState('')
+  const [apiKeyValue, setApiKeyValue] = useState((initial?.config?.api_key_value as string | undefined) ?? '')
   const [apiKeyLocation, setApiKeyLocation] = useState((initial?.config?.api_key_location as string | undefined) ?? 'header')
-  const [token, setToken] = useState('')
+  const [token, setToken] = useState((initial?.config?.token as string | undefined) ?? '')
   const [oauthClientId, setOauthClientId] = useState((initial?.config?.oauth_client_id as string | undefined) ?? '')
-  const [oauthClientSecret, setOauthClientSecret] = useState('')
+  const [oauthClientSecret, setOauthClientSecret] = useState((initial?.config?.oauth_client_secret as string | undefined) ?? '')
   const [oauthScope, setOauthScope] = useState((initial?.config?.oauth_scope as string | undefined) ?? '')
   const [oauthClientAuth, setOauthClientAuth] = useState((initial?.config?.oauth_client_auth as string | undefined) ?? 'body')
   const [oauthBodyMode, setOauthBodyMode] = useState((initial?.config?.oauth_body_mode as 'form' | 'json' | undefined) ?? 'form')
-  const [oauthRawBody, setOauthRawBody] = useState('')
+  const [oauthRawBody, setOauthRawBody] = useState((initial?.config?.oauth_raw_body as string | undefined) ?? '')
   const [oauthExtraParamsText, setOauthExtraParamsText] = useState(
     initial?.type === 'http' ? toKeyValueLines(initial?.config?.oauth_extra_params as Record<string, unknown> | undefined) : '',
   )
@@ -138,6 +156,45 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
   const [httpHeadersText, setHttpHeadersText] = useState(
     initial?.type === 'http' ? toKeyValueLines(initial?.config?.headers as Record<string, unknown> | undefined) : '',
   )
+
+  // --- Snowflake (specs/connection.md) ---
+  // One tab of named fields and one tab of raw JSON, both editing this exact
+  // same object -- unlike every other type's `config`, nothing here is
+  // Breadboard-only structure (auth_type, headers, ...), it's (almost)
+  // literally snowflake-connector-python's own connect() kwargs, so letting
+  // the user drop into JSON and add a key the named fields don't cover (e.g.
+  // authenticator, client_session_keep_alive) is as legitimate as using the
+  // named fields themselves -- there's no "which one wins" to resolve.
+  const initialSnowflakeConfig = initial?.type === 'snowflake' ? (initial?.config ?? {}) : {}
+  const [snowflakeTab, setSnowflakeTab] = useState<'fields' | 'json'>('fields')
+  const [snowflakeConfig, setSnowflakeConfig] = useState<Record<string, unknown>>(initialSnowflakeConfig)
+  const [snowflakeConfigText, setSnowflakeConfigText] = useState(() => JSON.stringify(initialSnowflakeConfig, null, 2))
+  const [snowflakeConfigError, setSnowflakeConfigError] = useState<string | null>(null)
+
+  /** A Configuration-tab field changed -- updates the canonical object and regenerates the JSON tab's text so the two stay in sync when switching tabs. */
+  const setSnowflakeField = (key: string, value: string) => {
+    setSnowflakeConfig((c) => {
+      const next = { ...c, [key]: value }
+      setSnowflakeConfigText(JSON.stringify(next, null, 2))
+      return next
+    })
+  }
+
+  /** The JSON tab's text changed -- parsed eagerly so the Configuration tab reflects it immediately too; an invalid/non-object edit is flagged but the last-valid config is kept (never silently dropped) until it's fixed. */
+  const setSnowflakeConfigFromText = (text: string) => {
+    setSnowflakeConfigText(text)
+    try {
+      const parsed: unknown = JSON.parse(text)
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        setSnowflakeConfigError('Must be a JSON object.')
+        return
+      }
+      setSnowflakeConfig(parsed as Record<string, unknown>)
+      setSnowflakeConfigError(null)
+    } catch (err) {
+      setSnowflakeConfigError(`Invalid JSON: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
 
   // --- common advanced ---
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -160,6 +217,9 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
   function buildPayload(): Record<string, unknown> {
     const config: Record<string, unknown> = {}
     if (type === 'sql') {
+      if (testQuery.trim()) config.test_query = testQuery.trim()
+    } else if (type === 'snowflake') {
+      Object.assign(config, snowflakeConfig)
       if (testQuery.trim()) config.test_query = testQuery.trim()
     } else if (type === 's3') {
       config.access_key = accessKey
@@ -384,13 +444,106 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
                 </Field>
                 <Field label="Password" helperText={isEdit ? 'Leave blank to keep the saved password' : undefined}>
                   <Input
-                    type="password"
+                    type={secretInputType(password)}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className={inputCls}
                   />
                 </Field>
               </div>
+            </>
+          )}
+
+          {type === 'snowflake' && (
+            <>
+              <Tabs value={snowflakeTab} onValueChange={(v) => setSnowflakeTab(v as 'fields' | 'json')}>
+                <TabsList className="w-full">
+                  <TabsTrigger value="fields" className="flex-1">
+                    Configuration
+                  </TabsTrigger>
+                  <TabsTrigger value="json" className="flex-1">
+                    Connection settings
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              {snowflakeTab === 'fields' ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Account" helperText="e.g. myorg-xy12345">
+                      <Input
+                        value={String(snowflakeConfig.account ?? '')}
+                        onChange={(e) => setSnowflakeField('account', e.target.value)}
+                        className={cn(inputCls, 'font-mono')}
+                      />
+                    </Field>
+                    <Field label="Role" helperText="Optional">
+                      <Input
+                        value={String(snowflakeConfig.role ?? '')}
+                        onChange={(e) => setSnowflakeField('role', e.target.value)}
+                        className={inputCls}
+                      />
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="User">
+                      <Input
+                        value={String(snowflakeConfig.user ?? '')}
+                        onChange={(e) => setSnowflakeField('user', e.target.value)}
+                        className={inputCls}
+                      />
+                    </Field>
+                    <Field label="Password" helperText={isEdit ? 'Leave blank to keep the saved password' : undefined}>
+                      <Input
+                        type={secretInputType(String(snowflakeConfig.password ?? ''))}
+                        value={String(snowflakeConfig.password ?? '')}
+                        onChange={(e) => setSnowflakeField('password', e.target.value)}
+                        className={inputCls}
+                      />
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Field label="Warehouse">
+                      <Input
+                        value={String(snowflakeConfig.warehouse ?? '')}
+                        onChange={(e) => setSnowflakeField('warehouse', e.target.value)}
+                        className={inputCls}
+                      />
+                    </Field>
+                    <Field label="Database">
+                      <Input
+                        value={String(snowflakeConfig.database ?? '')}
+                        onChange={(e) => setSnowflakeField('database', e.target.value)}
+                        className={inputCls}
+                      />
+                    </Field>
+                    <Field label="Schema">
+                      <Input
+                        value={String(snowflakeConfig.schema ?? '')}
+                        onChange={(e) => setSnowflakeField('schema', e.target.value)}
+                        className={inputCls}
+                      />
+                    </Field>
+                  </div>
+                </>
+              ) : (
+                <Field
+                  label="Connection settings (JSON)"
+                  helperText={
+                    (isEdit ? 'Leave "password" blank to keep the saved value. ' : '') +
+                    "Passed to snowflake-connector-python's connect() -- account/user/password/warehouse/database/schema/role, plus any other supported parameter (e.g. authenticator, client_session_keep_alive)."
+                  }
+                >
+                  <Textarea
+                    rows={10}
+                    value={snowflakeConfigText}
+                    onChange={(e) => setSnowflakeConfigFromText(e.target.value)}
+                    spellCheck={false}
+                    className="font-mono text-[0.85em]"
+                  />
+                </Field>
+              )}
+              {snowflakeConfigError && <p className="text-xs text-destructive">{snowflakeConfigError}</p>}
             </>
           )}
 
@@ -401,7 +554,7 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
                   <Input value={accessKey} onChange={(e) => setAccessKey(e.target.value)} className={cn(inputCls, 'font-mono')} />
                 </Field>
                 <Field label="Secret key" helperText={isEdit ? 'Leave blank to keep the saved value' : undefined}>
-                  <Input type="password" value={secretKey} onChange={(e) => setSecretKey(e.target.value)} className={inputCls} />
+                  <Input type={secretInputType(secretKey)} value={secretKey} onChange={(e) => setSecretKey(e.target.value)} className={inputCls} />
                 </Field>
               </div>
               <p className="text-[0.78em] text-muted-foreground">
@@ -457,7 +610,7 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
                     <Input value={username} onChange={(e) => setUsername(e.target.value)} className={inputCls} />
                   </Field>
                   <Field label="Password" helperText={isEdit ? 'Leave blank to keep the saved password' : undefined}>
-                    <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
+                    <Input type={secretInputType(password)} value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
                   </Field>
                 </div>
               )}
@@ -482,7 +635,7 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
                     <Input value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} className={cn(inputCls, 'font-mono')} />
                   </Field>
                   <Field label="Value" helperText={isEdit ? 'Leave blank to keep the saved value' : undefined}>
-                    <Input type="password" value={apiKeyValue} onChange={(e) => setApiKeyValue(e.target.value)} className={inputCls} />
+                    <Input type={secretInputType(apiKeyValue)} value={apiKeyValue} onChange={(e) => setApiKeyValue(e.target.value)} className={inputCls} />
                   </Field>
                   <Field label="Send in">
                     <Select value={apiKeyLocation} onValueChange={setApiKeyLocation}>
@@ -500,7 +653,7 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
 
               {authType === 'bearer' && (
                 <Field label="Token" helperText={isEdit ? 'Leave blank to keep the saved value' : undefined}>
-                  <Input type="password" value={token} onChange={(e) => setToken(e.target.value)} className={cn(inputCls, 'font-mono')} />
+                  <Input type={secretInputType(token)} value={token} onChange={(e) => setToken(e.target.value)} className={cn(inputCls, 'font-mono')} />
                 </Field>
               )}
 
@@ -512,7 +665,7 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
                     </Field>
                     <Field label="Client secret" helperText={isEdit ? 'Leave blank to keep the saved value' : undefined}>
                       <Input
-                        type="password"
+                        type={secretInputType(oauthClientSecret)}
                         value={oauthClientSecret}
                         onChange={(e) => setOauthClientSecret(e.target.value)}
                         className={inputCls}
@@ -613,7 +766,7 @@ export function ConnectionDialog({ initial, roles, onClose, onSaved }: Props) {
                   className={inputCls}
                 />
               </Field>
-              {type === 'sql' && (
+              {(type === 'sql' || type === 'snowflake') && (
                 <Field label="Test query" helperText="Optional -- defaults to SELECT 1" className="col-span-2">
                   <Input value={testQuery} onChange={(e) => setTestQuery(e.target.value)} className={cn(inputCls, 'font-mono')} />
                 </Field>

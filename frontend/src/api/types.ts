@@ -17,10 +17,14 @@ export interface DataConnection {
   id: string
   description: string
   /**
+   * 'snowflake': a Snowflake account, queried the same way as 'sql'
+   * (source_type='query' datastores can pick either) but configured
+   * entirely through `config` instead of dialect/host/port/database/
+   * username/password -- see that field's own doc comment below.
    * 'http' (specs/http-connection.md): authorization for arbitrary HTTP
    * endpoints, used by source_type='serialized' datastores.
    */
-  type: 'sql' | 's3' | 'http'
+  type: 'sql' | 'snowflake' | 's3' | 'http'
   dialect: string
   host: string
   port: number | null
@@ -31,12 +35,29 @@ export interface DataConnection {
   /** type=http: Basic/Digest auth username. */
   username: string
   /**
+   * type=sql/http: db/Basic/Digest auth password -- write-only on the API
+   * (never comes back from a GET) *except* when the saved value is a
+   * ${...} reference (a Setting or ${env.NAME}) rather than a literal
+   * secret, in which case DataConnectionSerializer echoes it back so the
+   * manager's Password field can show e.g. "${env.DB_PASSWORD}" instead of
+   * going blank. Absent (not just empty) when there's nothing to show.
+   */
+  password?: string
+  /**
    * Per-type settings that don't fit the shared columns above -- see
    * backend/connections/models.py's DataConnection.config docstring for the
    * shape per type. Secret-shaped keys (secret_key, token, api_key_value,
-   * oauth_client_secret, oauth_raw_body) come back blanked from the API;
-   * leave them blank on save to keep the stored value.
+   * oauth_client_secret, oauth_raw_body, password) come back blanked from
+   * the API; leave them blank on save to keep the stored value.
    *
+   * type=snowflake: passed essentially as-is to snowflake-connector-python's
+   *   connect() (via the snowflake-sqlalchemy dialect). {account?, user?,
+   *   password?, warehouse?, database?, schema?, role?} are the common ones
+   *   (edited as named fields on the Configuration tab), but this can hold
+   *   any other connect() kwarg too (e.g. authenticator,
+   *   client_session_keep_alive) -- edited as JSON on the Connection
+   *   settings tab, which is the exact same object. Also accepts
+   *   test_query, like type=sql.
    * type=http: {auth_type: 'none'|'basic'|'api_key'|'bearer'|'oauth'|'digest',
    *   api_key_name?, api_key_value?, api_key_location?: 'header'|'query',
    *   token?, digest_algorithm?, headers?: Record<string, string>,
@@ -103,35 +124,35 @@ export interface Datastore {
    */
   connection: string | null
   sql_def: string | null
-  /** source_type=query only. Supports ${param} the same way the serialized fields above do (Settings fallback, dotted keys included). */
+  /** source_type=query only. Supports ${param} the same way the serialized fields above do (Settings fallback, dotted keys included -- ${env.NAME} too). */
   inline_sql: string
   row_limit: number | null
   /** Result cache term in seconds, keyed by datastore + all input parameters; null/0 = no caching. Cleared via POST /datastores/{id}/clear-cache/. */
   cache_seconds: number | null
   /**
    * source_type=serialized + access_type=s3: object key/path within the
-   * connection's bucket, used when object_url is blank. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included).
+   * connection's bucket, used when object_url is blank. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included, or ${env.NAME} for this server's own OS environment).
    */
   object_key: string
-  /** source_type=serialized + access_type=s3 only: a full object URL, tried instead of connection+object_key when set. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included). */
+  /** source_type=serialized + access_type=s3 only: a full object URL, tried instead of connection+object_key when set. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included, or ${env.NAME} for this server's own OS environment). */
   object_url: string
   /**
    * source_type=serialized: the collapsible "Body" override used for test/
    * troubleshooting -- when non-blank, parsed directly instead of actually
-   * fetching from access_type's configured source. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included).
+   * fetching from access_type's configured source. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included, or ${env.NAME} for this server's own OS environment).
    */
   body: string
-  /** source_type=serialized + access_type=http: the request URL, used as-is. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included). */
+  /** source_type=serialized + access_type=http: the request URL, used as-is. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included, or ${env.NAME} for this server's own OS environment). */
   data_url: string
   /** source_type=serialized + access_type=http only. */
   request_method: 'GET' | 'POST'
   /** source_type=serialized + access_type=http only: key -> value query/form params. Each value supports ${param}. */
   request_params: Record<string, string>
-  /** source_type=serialized + access_type=http only: raw request body (JSON/text/XML) for POST. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included). */
+  /** source_type=serialized + access_type=http only: raw request body (JSON/text/XML) for POST. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included, or ${env.NAME} for this server's own OS environment). */
   request_body: string
-  /** source_type=serialized + access_type=file only: a directory on the server's own filesystem. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included). */
+  /** source_type=serialized + access_type=file only: a directory on the server's own filesystem. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included, or ${env.NAME} for this server's own OS environment). */
   file_path: string
-  /** source_type=serialized + access_type=file only: filename and/or regex selecting one file within file_path. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included). */
+  /** source_type=serialized + access_type=file only: filename and/or regex selecting one file within file_path. Supports ${param} (falling back to Settings for anything a param doesn't resolve, dotted keys like ${s3.bucket} included, or ${env.NAME} for this server's own OS environment). */
   file_expression: string
   /**
    * source_type=serialized + access_type=datastore only: the id of another
@@ -540,8 +561,33 @@ export interface PanelNode {
   treeRows?: boolean
   treeIdField?: string
   treeParentField?: string
-  /** datatable only -- field names (of this table's own columns) whose colorScale combine into one shared min/max range instead of each column scaling against just its own values -- e.g. several numeric columns meant to read on one comparable scale. A column not named here keeps scaling independently (the default); a named column still needs its own colorScale turned on to actually render colored. */
+  /**
+   * datatable only -- field names (of this table's own columns) whose
+   * colorScale combine into one shared min/max range instead of each column
+   * scaling against just its own values -- e.g. several numeric columns
+   * meant to read on one comparable scale. A column not named here keeps
+   * scaling independently (the default); a named column still needs its own
+   * colorScale turned on (datatable-column's own field -- see its doc
+   * comment below) to actually render colored. Comma-separated field names
+   * in the editor.
+   */
   colorScaleGroup?: string[]
+  /**
+   * datatable only -- how color scaling is scoped. Unset -- "Column" (the
+   * original, pre-this-field behavior, never a stored literal): each colored
+   * column scales independently against its own values across the whole
+   * table, or shares a range with the rest of colorScaleGroup when set --
+   * entirely managed on each datatable-column's own Color scale field, with
+   * nothing to configure here. This is the backward-compatible default, so
+   * an already-saved panel with colorScaleMode unset keeps coloring exactly
+   * as before. 'row' scopes colorScaleGroup's shared min/max to just that
+   * row's own values across the group's columns instead (e.g. highlighting
+   * each row's own highest/lowest among a set of period columns, regardless
+   * of how rows compare to each other). 'none' is a table-wide override that
+   * suppresses all color scaling, even on a column with its own Color scale
+   * turned on.
+   */
+  colorScaleMode?: 'none' | 'row'
   /** datatable only -- the low/mid/high palette every color-scaled column in this table uses (see datatableUtils.tsx's COLOR_SCALE_SCHEMES). Unset/unknown -- 'red-green', today's original fixed colors. */
   colorScaleScheme?: string
   chartType?: 'line' | 'bar' | 'pie'
@@ -600,6 +646,16 @@ export interface PanelNode {
   /** datatable-column, datatable's own Transpose only -- min width (px) of this column's own label cell when transposed. Its text always wraps rather than clipping. */
   transposeHeaderMinWidth?: number
   totalExpession?: 'sum' | 'avg' | 'min' | 'max'
+  /**
+   * datatable-column only -- literal text (e.g. "Total:") shown in this
+   * column's own totals-row cell, wherever totalsPosition renders it.
+   * Independent of totalExpession: a label-only column (e.g. the leftmost,
+   * non-aggregated one) sets just this, while a column that also aggregates
+   * shows "<totalLabel> <formatted total>". Rendered even if this column
+   * alone has no totalExpession, as long as the datatable's own Show Totals
+   * (footer) is on and at least one column in the table has a total set.
+   */
+  totalLabel?: string
   pinnable?: boolean
   /** datatable-column only -- excludes this column from the rendered table (header/cells/footer) when checked. */
   hidden?: boolean

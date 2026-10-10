@@ -110,6 +110,27 @@ const BLANK_CONTENT: PanelContent = {
  * parameters/datastores/content are always arrays, same as
  * drilldowns/links already do via `?? []` at their own read sites.
  */
+/**
+ * Order-independent, undefined-insensitive JSON serialization used for the
+ * dirty check below (editor-saved snapshot vs. current state). Plain
+ * `JSON.stringify` compares key insertion order and treats an explicitly
+ * `undefined`-valued key differently from an absent one, so two objects that
+ * are semantically identical -- e.g. a node round-tripped through a patch
+ * spread that appended a key not present on the original, or an optional
+ * field normalized from "absent" to "undefined" -- could read as spuriously
+ * different, firing the "Unsaved changes" prompt with nothing to save.
+ */
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
 function normalizeContent(content: PanelContent): PanelContent {
   return {
     ...content,
@@ -191,7 +212,7 @@ export function EditorPage() {
   const [previewDatastore, setPreviewDatastore] = useState<{ ref: PanelDatastoreRef; initialParams: Record<string, string> } | null>(null)
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null)
   const savedSnapshot = useRef(
-    JSON.stringify({ name: '', slug: '', category: '', subcategory: '', description: '', content: BLANK_CONTENT, allowedRoles: [] as number[] }),
+    stableStringify({ name: '', slug: '', category: '', subcategory: '', description: '', content: BLANK_CONTENT, allowedRoles: [] as number[] }),
   )
 
   const [sidebarWidth, sidebarDrag] = useResizable('editor.sidebarWidth', 280, { min: 200, max: 560, direction: 'horizontal' })
@@ -231,7 +252,7 @@ export function EditorPage() {
       setContent(BLANK_CONTENT)
       setAllowedRoles([])
       setSelection({ kind: 'node', id: BLANK_CONTENT.content[0].id })
-      savedSnapshot.current = JSON.stringify({
+      savedSnapshot.current = stableStringify({
         name: '',
         slug: '',
         category: '',
@@ -261,7 +282,7 @@ export function EditorPage() {
       setContent(content)
       setAllowedRoles(panel.allowed_roles ?? [])
       setSelection({ kind: 'node', id: content.content[0]?.id ?? 'root' })
-      savedSnapshot.current = JSON.stringify({
+      savedSnapshot.current = stableStringify({
         name: panel.name,
         slug: panel.slug ?? '',
         category: panel.category ?? '',
@@ -274,7 +295,7 @@ export function EditorPage() {
   }, [id, isNew])
 
   const root = content.content[0] ?? BLANK_CONTENT.content[0]
-  const dirty = savedSnapshot.current !== JSON.stringify({ name, slug, category, subcategory, description, content, allowedRoles })
+  const dirty = savedSnapshot.current !== stableStringify({ name, slug, category, subcategory, description, content, allowedRoles })
 
   useEffect(() => {
     if (!dirty) return
@@ -336,7 +357,7 @@ export function EditorPage() {
       } else {
         await api.put<Panel>(`/panels/${panelId}/`, body)
       }
-      savedSnapshot.current = JSON.stringify({ name, slug, category, subcategory, description, content, allowedRoles })
+      savedSnapshot.current = stableStringify({ name, slug, category, subcategory, description, content, allowedRoles })
       toast.success('Saved.')
       return true
     } catch (err) {

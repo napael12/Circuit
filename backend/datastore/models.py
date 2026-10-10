@@ -237,10 +237,19 @@ class Datastore(models.Model):
     def sql_text(self) -> str:
         return self.sql_def.content if self.sql_def_id else self.inline_sql
 
-    def discover_param_names(self) -> list[str]:
+    def discover_param_names(self, _visited: frozenset | None = None) -> list[str]:
         """${param} names referenced anywhere in this datastore's own metadata
         (specs/datasource_enhancements.md: "parameters can be derived from
-        meta data ... in any meta data"), in first-seen order, deduped.
+        meta data ... in any meta data"), in first-seen order, deduped --
+        plus, when this one's own access_type=datastore chains to another
+        *global* datastore by a literal (non-templated) id, every param name
+        that upstream source's own metadata references too, recursively. A
+        parameter that only ever appears in the upstream source's own query/
+        config still has to trigger a refetch of anything reading from it
+        through the chain -- see services.get_datastore_raw_output. `_visited`
+        guards against a circular source_datastore chain (this datastore's
+        own id joins it before recursing, so a cycle back to it stops here
+        instead of recursing forever).
         """
         from breadboard.templating import discover_template_vars
 
@@ -268,4 +277,20 @@ class Datastore(models.Model):
                 if name not in seen:
                     seen.add(name)
                     names.append(name)
+
+        if (
+            self.source_type == self.SOURCE_SERIALIZED
+            and self.access_type == self.ACCESS_DATASTORE
+            and self.source_datastore
+            and '{' not in self.source_datastore  # a literal id, not itself ${param}-templated -- which one to recurse into can't be known statically
+        ):
+            visited = (_visited or frozenset()) | {self.pk}
+            if self.source_datastore not in visited:
+                source = Datastore.objects.filter(pk=self.source_datastore).first()
+                if source is not None:
+                    for name in source.discover_param_names(_visited=visited):
+                        if name not in seen:
+                            seen.add(name)
+                            names.append(name)
+
         return names

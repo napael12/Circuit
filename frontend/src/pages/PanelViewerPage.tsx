@@ -227,7 +227,7 @@ function HeaderParameters({ parameters, datastores }: { parameters: PanelParamet
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       {parameters.map((param) => (
-        <div key={param.name} className="flex items-center gap-1.5">
+        <div key={param.name} className="flex shrink-0 items-center gap-1.5">
           <label className="shrink-0 text-[0.75em] text-muted-foreground">{param.label}</label>
           <div className="w-36">
             <ParamField param={param} datastores={datastores} value={values[param.name] ?? ''} onChange={(v) => setParameter(param.name, v)} />

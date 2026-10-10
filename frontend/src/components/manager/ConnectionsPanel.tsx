@@ -28,6 +28,7 @@ const PRIMARY_CELL_CLASS = 'text-blue-600 dark:text-blue-500 font-medium'
 
 const TYPE_LABELS: Record<DataConnection['type'], string> = {
   sql: 'SQL',
+  snowflake: 'Snowflake',
   s3: 'S3',
   http: 'HTTP',
 }
@@ -37,6 +38,8 @@ function targetSummary(row: DataConnection): string {
   switch (row.type) {
     case 'sql':
       return row.url || [row.host, row.database].filter(Boolean).join(' / ') || row.dialect
+    case 'snowflake':
+      return [row.config?.account, row.config?.database, row.config?.schema].filter(Boolean).join(' / ')
     case 's3':
       return [row.config?.bucket, row.config?.region].filter(Boolean).join(' · ')
     case 'http':

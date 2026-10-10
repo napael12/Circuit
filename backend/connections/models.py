@@ -19,10 +19,12 @@ class DataConnection(models.Model):
     """
 
     TYPE_SQL = 'sql'
+    TYPE_SNOWFLAKE = 'snowflake'
     TYPE_S3 = 's3'
     TYPE_HTTP = 'http'
     TYPE_CHOICES = [
         (TYPE_SQL, 'SQL database'),
+        (TYPE_SNOWFLAKE, 'Snowflake'),
         (TYPE_S3, 'S3 bucket'),
         (TYPE_HTTP, 'HTTP'),
     ]
@@ -54,9 +56,23 @@ class DataConnection(models.Model):
 
     # Any ${VARIABLE} in a string value here (or in host/url/username/password
     # above) is resolved against portal.models.Setting at connection-build
-    # time -- see breadboard.templating.substitute_setting_vars.
+    # time -- or against this process's own OS environment for ${env.NAME}
+    # -- see breadboard.templating.substitute_setting_vars.
     #
     # type=sql: {"test_query": "..."} (optional, defaults to "SELECT 1").
+    # type=snowflake (specs/connection.md): passed essentially as-is to
+    # snowflake-connector-python's connect() (via the snowflake-sqlalchemy
+    # dialect -- see connections.backends.SnowflakeConnectionBackend). The
+    # manager UI's "Configuration" tab offers named fields for the common
+    # ones -- {"account": "...", "user": "...", "password": "...",
+    #   "warehouse": "...", "database": "...", "schema": "...",
+    #   "role": "..."} -- its "Connection settings" tab edits this exact same
+    #   dict as JSON instead, so any other connect() kwarg (e.g.
+    #   "authenticator", "client_session_keep_alive") can ride along too.
+    #   "password" is secret-shaped (see serializers.SECRET_CONFIG_KEYS) --
+    #   blanked on read, blank on write keeps the stored value. Also accepts
+    #   "test_query" like type=sql, kept out of the connect() kwargs (see
+    #   build_url below).
     # type=s3: {"access_key": "...", "secret_key": "...", "region": "...",
     #   "bucket": "..." (optional, used by Test)}. Leave access_key/secret_key
     #   blank for anonymous access to a public bucket.

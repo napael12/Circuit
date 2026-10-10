@@ -184,8 +184,12 @@ interface BuildColumnsOptions {
   changedCells?: Map<string, SignalDirection>
   /** Resolved from PanelNode.signalOnUpdate (its legacy `true` already normalized to 'neutral' by the caller) -- which color a flashing cell's direction maps to. Only meaningful when changedCells is set. */
   signalMode?: SignalMode
-  /** Per-column colorScale domain, from DatatableControl's own useMemo -- see colorScaleStyle. */
+  /** Per-column colorScale domain, from DatatableControl's own useMemo -- see colorScaleStyle. Unset/Column mode only (colorScaleMode below) -- ignored in row and none modes. */
   colorScaleDomains?: ColorScaleDomains
+  /** PanelNode.colorScaleMode -- unset (Column mode: DatatableControl's colorScaleDomains, shared across every loaded row), 'row' (rowColorScaleDomain, scoped to just that row's own values), or 'none' (no color scaling at all, regardless of any column's own Color scale). */
+  colorScaleMode?: 'none' | 'row'
+  /** PanelNode.colorScaleGroup, raw (not yet bucketed) -- only consulted in row mode; see rowColorScaleDomain. */
+  colorScaleGroupFields?: string[]
   /** PanelNode.colorScaleScheme -- which COLOR_SCALE_SCHEMES palette every color-scaled column in this table uses. */
   colorScaleScheme?: string
   /** PanelNode.headerStyle -- CSS text applied to every column header cell. */
@@ -288,6 +292,38 @@ const COLOR_SCALE_GROUP_KEY = '__colorScaleGroup__'
 export function colorScaleGroupKey(col: PanelNode, groupFields: string[] | undefined): string {
   if (col.field && groupFields?.includes(col.field)) return COLOR_SCALE_GROUP_KEY
   return col.id
+}
+
+/**
+ * PanelNode.colorScaleMode='row' counterpart to DatatableControl's own
+ * table-wide colorScaleDomains useMemo: instead of one shared min/max
+ * computed once across every loaded row, this computes a fresh one for just
+ * `rowData`, from whichever of `cols` share `col`'s colorScaleGroup bucket
+ * (same membership rule as colorScaleGroupKey -- a column not listed in
+ * groupFields scales alone, against just its own value in this row, which is
+ * always a degenerate min===max domain, i.e. never colored; row mode only
+ * does something for columns actually named in the group). Only sibling
+ * columns with their own colorScale turned on (and an eligible dataType)
+ * count as members, mirroring colorScaleDomains' own filter -- a listed-but-
+ * uncolored sibling's value doesn't skew the range of the columns that *are*
+ * colored.
+ */
+export function rowColorScaleDomain(col: PanelNode, cols: PanelNode[], groupFields: string[] | undefined, rowData: DatatableRow): ColorScaleDomain | undefined {
+  if (!col.field) return undefined
+  const members =
+    groupFields?.includes(col.field)
+      ? cols.filter((c) => c.field && groupFields.includes(c.field) && c.colorScale && c.colorScale !== 'none' && isColorScaleEligibleDataType(c.dataType))
+      : [col]
+  let min = Infinity
+  let max = -Infinity
+  for (const c of members) {
+    const raw = getFieldValue(rowData, c.field!)
+    const num = typeof raw === 'number' ? raw : parseFloat(String(raw))
+    if (!Number.isFinite(num)) continue
+    if (num < min) min = num
+    if (num > max) max = num
+  }
+  return Number.isFinite(min) && Number.isFinite(max) ? { min, max } : undefined
 }
 
 /**
@@ -471,7 +507,13 @@ export function buildColumns<TData extends DatatableRow = DatatableRow>(
         // background class -- skip it for the instant a cell is actually
         // flashing so the flash still shows, reverting to the scale color
         // once diffChangedCells' timeout clears.
-        const scaleStyle = direction ? undefined : colorScaleStyle(value, col, options?.colorScaleDomains?.get(col.id), options?.colorScaleScheme)
+        const domain =
+          options?.colorScaleMode === 'none'
+            ? undefined
+            : options?.colorScaleMode === 'row'
+              ? rowColorScaleDomain(col, cols, options.colorScaleGroupFields, row.original as DatatableRow)
+              : options?.colorScaleDomains?.get(col.id)
+        const scaleStyle = direction ? undefined : colorScaleStyle(value, col, domain, options?.colorScaleScheme)
         const needsColorBox = signalEnabled || !!scaleStyle
         const colorBoxClass = needsColorBox
           ? `block w-full transition-colors duration-1000 ${direction ? signalFlashClass(direction, options?.signalMode ?? 'neutral') : ''}`

@@ -156,7 +156,12 @@ export function DatatableControl({ component, datastores, previewMode }: Control
   // computed once per bucket from the union of every member column's
   // values, and stored under each member's own id -- colorScaleStyle's
   // per-cell lookup by col.id needs no change at all.
+  // colorScaleMode='row' computes its own domain per cell instead (see
+  // datatableUtils.tsx's rowColorScaleDomain), and 'none' renders no color at
+  // all -- this table-wide scan would just be wasted work in either mode, so
+  // it's skipped entirely.
   const colorScaleDomains = useMemo<ColorScaleDomains>(() => {
+    if (component.colorScaleMode === 'row' || component.colorScaleMode === 'none') return new Map()
     const groups = new Map<string, PanelNode[]>()
     for (const col of visibleColumns) {
       if (!col.colorScale || col.colorScale === 'none' || !isColorScaleEligibleDataType(col.dataType) || !col.field) continue
@@ -192,7 +197,7 @@ export function DatatableControl({ component, datastores, previewMode }: Control
       }
     }
     return domains
-  }, [visibleColumns, rows, component.colorScaleGroup])
+  }, [visibleColumns, rows, component.colorScaleGroup, component.colorScaleMode])
 
   const columns = useMemo(() => {
     const onLinkedCellClick = (col: PanelNode, value: unknown) =>
@@ -209,6 +214,8 @@ export function DatatableControl({ component, datastores, previewMode }: Control
       changedCells,
       signalMode: signalMode || undefined,
       colorScaleDomains,
+      colorScaleMode: component.colorScaleMode,
+      colorScaleGroupFields: component.colorScaleGroup,
       colorScaleScheme: component.colorScaleScheme,
       headerStyle: component.headerStyle,
     })
@@ -225,6 +232,8 @@ export function DatatableControl({ component, datastores, previewMode }: Control
     changedCells,
     signalMode,
     colorScaleDomains,
+    component.colorScaleMode,
+    component.colorScaleGroup,
     component.colorScaleScheme,
     component.headerStyle,
   ])
@@ -292,7 +301,7 @@ export function DatatableControl({ component, datastores, previewMode }: Control
     },
   })
 
-  const hasTotalColumn = !transpose && !!component.footer && visibleColumns.some((c) => c.totalExpession)
+  const hasTotalColumn = !transpose && !!component.footer && visibleColumns.some((c) => c.totalExpession || c.totalLabel)
   // Position only -- doesn't gate whether totals render at all (hasTotalColumn above already does that).
   const isSubheaderTotals = component.totalsPosition === 'subheader'
   // Filtered, not raw, so totals and the pagination record count both track
@@ -420,9 +429,15 @@ function FooterRow({ columns, rows, style }: { columns: PanelNode[]; rows: Datat
       {columns.map((col) => {
         const path = col.field || ''
         const total = col.totalExpession ? computeTotal(rows, path, col.totalExpession) : null
+        const formattedTotal = total !== null ? formatValue(total, col.dataType, col.dataFormat, col.humanReadable) : ''
+        // col.totalLabel (e.g. "Total:") is independent of col.totalExpession
+        // -- a label-only column (typically the leftmost, non-aggregated
+        // one) sets just this, while a column that also aggregates shows
+        // both, label first.
+        const text = col.totalLabel ? [col.totalLabel, formattedTotal].filter(Boolean).join(' ') : formattedTotal
         return (
           <DataGridTableFootRowCell key={col.id}>
-            <span style={{ ...alignStyle(col.align), ...footerStyle }}>{total !== null ? formatValue(total, col.dataType, col.dataFormat, col.humanReadable) : ''}</span>
+            <span style={{ ...alignStyle(col.align), ...footerStyle }}>{text}</span>
           </DataGridTableFootRowCell>
         )
       })}

@@ -9,9 +9,9 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
+import { SearchableSelect } from '@/components/SearchableSelect'
 import { cn } from '@/lib/utils'
 
 import type { PanelDatastoreRef, PanelParameter } from '../../api/types'
@@ -324,20 +324,11 @@ export function ParamField({
   }
 
   if (param.inputType === 'selector-single' && param.datastore) {
-    return (
-      <Select value={value || undefined} onValueChange={onChange}>
-        <SelectTrigger className="h-8 w-full text-[0.85em]">
-          <SelectValue placeholder="Select..." />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((opt) => (
-            <SelectItem key={opt.value} value={opt.value}>
-              {opt.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    )
+    // SearchableSelect (not reui's own plain, non-filterable Select) so a
+    // long options datastore -- the same case selector-multi's own
+    // Command/Popover combobox below already handles -- gets a search box
+    // here too, instead of a flat list with no way to filter it.
+    return <SearchableSelect value={value} onValueChange={onChange} options={options} placeholder="Select..." className="h-8 text-[0.85em]" />
   }
 
   if (param.datastore) {

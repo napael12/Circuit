@@ -107,7 +107,15 @@ const DATATABLE: FieldSchema[] = [
     key: 'colorScaleGroup',
     label: 'Color Scale Group',
     type: 'csv',
-    help: 'Field names (comma-separated) of this table\'s own columns whose Color scale should combine into one shared min/max range, instead of each column scaling against just its own values. A listed column still needs its own Color scale turned on to render colored',
+    help: 'Field names of this table\'s own columns whose Color scale should combine into one shared min/max range, instead of each column scaling against just its own values -- enter multiple, comma-separated (e.g. "mon, tue, wed"). Color scale itself is turned on per-column, on each datatable-column\'s own Color scale field -- a column named here still needs that turned on to actually render colored',
+  },
+  {
+    key: 'colorScaleMode',
+    label: 'Color Scale Mode',
+    type: 'select',
+    options: ['none', 'row'],
+    noneLabel: 'Column (default)',
+    help: 'Column (default) -- no table-level scoping; each column\'s own Color scale field (datatable-column) manages its own scaling, optionally sharing a range with Color Scale Group above. Row -- Color Scale Group\'s columns instead scale independently within just that row, so a row\'s own highest/lowest value among the group stands out regardless of other rows. None -- turns off color scaling for every column in this table, even one with its own Color scale turned on',
   },
   {
     key: 'colorScaleScheme',
@@ -157,6 +165,12 @@ const DATATABLE_COLUMN: FieldSchema[] = [
     help: 'Datatable\'s own Transpose only -- min width (px) of this column\'s own label cell when transposed. Its text always wraps rather than clipping',
   },
   { key: 'totalExpession', label: 'Total', type: 'select', options: ['sum', 'avg', 'min', 'max'] },
+  {
+    key: 'totalLabel',
+    label: 'Total Label',
+    type: 'text',
+    help: 'Show Totals only -- literal text (e.g. "Total:") shown in this column\'s totals-row cell. Works with or without this column\'s own Total; if both are set, shows "<label> <total>"',
+  },
   { key: 'pinnable', label: 'Pinnable', type: 'checkbox' },
   {
     key: 'groupFunction',

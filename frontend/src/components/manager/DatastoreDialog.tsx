@@ -165,18 +165,21 @@ export function DatastoreDialog({
   }, [tab, sourceType])
 
   const connectionOptions = useMemo<Option[]>(() => {
-    const type =
+    // source_type='query' accepts either SQL flavor -- a Snowflake connection
+    // is queried exactly the same way (datastore.engine), just configured
+    // differently (see connections/backends.py's SnowflakeConnectionBackend).
+    const allowedTypes: DataConnection['type'][] =
       sourceType === 'serialized'
         ? accessType === 's3'
-          ? 's3'
+          ? ['s3']
           : accessType === 'http'
-            ? 'http'
-            : undefined
+            ? ['http']
+            : []
         : sourceType === 'query'
-          ? 'sql'
-          : undefined
-    if (!type) return []
-    return connections.filter((c) => c.type === type).map((c) => ({ value: c.id, label: c.id }))
+          ? ['sql', 'snowflake']
+          : []
+    if (allowedTypes.length === 0) return []
+    return connections.filter((c) => allowedTypes.includes(c.type)).map((c) => ({ value: c.id, label: c.id }))
   }, [connections, sourceType, accessType])
 
   // specs/permissions.md #2a: a restricted connection's roles cascade to any

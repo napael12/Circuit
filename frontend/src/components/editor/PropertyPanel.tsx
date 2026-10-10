@@ -228,20 +228,7 @@ function FieldControl({
   }
 
   if (field.type === 'csv') {
-    return (
-      <Input
-        value={((value as string[]) ?? []).join(', ')}
-        onChange={(e) =>
-          onChange(
-            e.target.value
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean),
-          )
-        }
-        className="h-7 text-[0.82em]"
-      />
-    )
+    return <CsvField value={(value as string[]) ?? []} onChange={onChange} />
   }
 
   if (field.type === 'json') {
@@ -332,6 +319,33 @@ function OrderedMultiselectField({
       )}
     </div>
   )
+}
+
+/**
+ * type=csv's control -- a comma-separated text field backed by a string[]
+ * value. Same local-text-until-blur shape as JsonControl just below, and for
+ * the same reason: committing the parsed array on every keystroke would feed
+ * the *displayed* text straight back from that array (via the `value` prop),
+ * which immediately drops a just-typed trailing "," (and any space after it)
+ * the instant it parses out an empty trailing segment -- snapping the field
+ * back mid-type and making it practically impossible to type past the first
+ * entry. Committing only on blur means typing never round-trips through the
+ * parsed value at all.
+ */
+function CsvField({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const [text, setText] = useState(() => value.join(', '))
+
+  useEffect(() => setText(value.join(', ')), [value])
+
+  const commit = () =>
+    onChange(
+      text
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    )
+
+  return <Input value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} className="h-7 text-[0.82em]" />
 }
 
 function JsonControl({ value, onChange }: { value: unknown; onChange: (v: unknown) => void }) {

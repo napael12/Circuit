@@ -11,6 +11,7 @@ the same as hand-editing the SQL/URL itself.
 """
 from __future__ import annotations
 
+import os
 import re
 
 _VAR_RE = re.compile(r'\$\{(\w+)\}')
@@ -20,6 +21,11 @@ _VAR_RE = re.compile(r'\$\{(\w+)\}')
 # (discover_template_vars/substitute_template_vars, which never use dots)
 # are untouched.
 _SETTING_VAR_RE = re.compile(r'\$\{([\w.]+)\}')
+#: The ${env.NAME} namespace (see substitute_setting_vars) -- deliberately a
+#: prefix check, not its own regex: it shares _SETTING_VAR_RE's match so
+#: ${env.NAME} and ${s3.bucket} are indistinguishable until repl() looks at
+#: the captured name.
+_ENV_VAR_PREFIX = 'env.'
 
 
 def discover_template_vars(text: str | None) -> list[str]:
@@ -48,11 +54,19 @@ def substitute_setting_vars(text: str | None, profile: str = '*') -> str | None:
     may be dotted (${s3.bucket}, matching the app.version/backup.path etc.
     convention Settings themselves already use).
 
+    ${env.NAME} is a second, sibling namespace within this same dotted
+    syntax: resolves from this process's own OS environment instead of a
+    Setting row, e.g. ${env.PARAM1} -> os.environ['PARAM1']. Lets a
+    connection or datastore field reference a value that's deployment-
+    specific (injected by the host/container, never copied into the
+    database) the same way it'd reference a Setting -- a missing variable
+    leaves ${env.NAME} unresolved, same as an unset Setting leaves ${name}.
+
     Distinct from substitute_template_vars above: this resolves against
-    centrally-configured Settings (specs/connection.md's "Allow to use
-    variables (${VARIABLE}) configured in settings"), not caller-supplied
-    runtime params -- used to keep connection secrets/environment values out
-    of the connection record itself. Leaves unresolved ${name} as-is.
+    centrally-configured Settings/environment (specs/connection.md's "Allow
+    to use variables (${VARIABLE}) configured in settings"), not caller-
+    supplied runtime params -- used to keep connection secrets/environment
+    values out of the connection record itself. Leaves unresolved ${name} as-is.
     """
     if not text or '${' not in text:
         return text
@@ -61,6 +75,9 @@ def substitute_setting_vars(text: str | None, profile: str = '*') -> str | None:
 
     def repl(match: re.Match) -> str:
         name = match.group(1)
+        if name.startswith(_ENV_VAR_PREFIX):
+            value = os.environ.get(name[len(_ENV_VAR_PREFIX):])
+            return match.group(0) if value is None else value
         setting = Setting.objects.filter(profile=profile, key=name).first()
         return match.group(0) if setting is None else setting.value
 
@@ -72,9 +89,10 @@ def substitute_vars(text: str | None, params: dict, profile: str = '*') -> str |
     (substitute_template_vars -- exact, non-dotted ${name} only), then
     Settings (substitute_setting_vars, dotted names included) for whatever's
     still unresolved -- so e.g. a datastore's object_key can reference
-    ${s3.bucket} from Settings the same way a connection's config already
-    can, while a param of the same name still takes precedence. Both halves
-    leave an unresolved ${name} as-is, so this is a no-op for text that
-    never references either.
+    ${s3.bucket} from Settings, or ${env.NAME} from this process's own OS
+    environment, the same way a connection's config already can, while a
+    param of the same name still takes precedence. Both halves leave an
+    unresolved ${name} as-is, so this is a no-op for text that never
+    references either.
     """
     return substitute_setting_vars(substitute_template_vars(text, params), profile)

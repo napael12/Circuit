@@ -25,7 +25,8 @@ from .models import DataConnection
 
 
 def _resolved(value):
-    """Resolves ${VARIABLE} against portal.models.Setting for string config values."""
+    """Resolves ${VARIABLE} against portal.models.Setting (or ${env.NAME}
+    against this process's own OS environment) for string config values."""
     if isinstance(value, str):
         return substitute_setting_vars(value)
     return value
@@ -105,6 +106,42 @@ class SqlConnectionBackend(ConnectionBackend):
             return {'ok': False, 'message': str(exc.__cause__ or exc)}
         except Exception as exc:  # noqa: BLE001 - surface any driver/config error to the UI
             return {'ok': False, 'message': str(exc)}
+
+
+class SnowflakeConnectionBackend(SqlConnectionBackend):
+    """snowflake-connector-python, via the snowflake-sqlalchemy dialect so
+    this drops straight into the same SQLAlchemy query path (datastore.engine)
+    every other type=sql connection already uses -- snowflake-sqlalchemy's
+    dialect builds its DBAPI connection by calling
+    snowflake.connector.connect(**kwargs) itself, so config here really is
+    (most of) that call's kwargs.
+
+    Unlike SqlConnectionBackend, everything lives in `config` (see
+    DataConnection.config's own doc comment) rather than the generic
+    host/port/database/username/password columns -- account/user/password/
+    warehouse/database/schema/role don't map cleanly onto those (e.g. there's
+    no single column for "account"), and keeping them together in one dict is
+    exactly what the manager UI's "Connection settings" JSON tab edits
+    directly, same as a type=s3/http connection's own settings.
+    """
+
+    #: config keys that aren't real connect() kwargs -- dropped before
+    #: building the URL rather than erroring out as an unknown snowflake-
+    #: connector parameter.
+    _NON_CONNECT_KEYS = {'test_query'}
+
+    def build_url(self):
+        from snowflake.sqlalchemy import URL
+
+        cfg = {
+            key: _resolved(value)
+            for key, value in (self.conn.config or {}).items()
+            if key not in self._NON_CONNECT_KEYS and value not in (None, '')
+        }
+        return URL(**cfg)
+
+    def _connect_args(self) -> dict:
+        return {'login_timeout': self.timeout}
 
 
 #: Fallback token lifetime (seconds) when a token response has no usable expires_in.
@@ -285,6 +322,7 @@ class S3ConnectionBackend(ConnectionBackend):
 
 _BACKENDS: dict[str, type[ConnectionBackend]] = {
     'sql': SqlConnectionBackend,
+    'snowflake': SnowflakeConnectionBackend,
     's3': S3ConnectionBackend,
     'http': HttpConnectionBackend,
 }
